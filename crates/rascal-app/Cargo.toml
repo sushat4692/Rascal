@@ -1,0 +1,28 @@
+[package]
+name = "rascal-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "A small, fast, read-only Git history viewer built with GPUI"
+
+[[bin]]
+name = "rascal"
+path = "src/main.rs"
+
+[dependencies]
+rascal-core = { path = "../rascal-core" }
+gpui = { workspace = true }
+gpui-component = { workspace = true }
+gpui-component-assets = { workspace = true }
+anyhow = { workspace = true }
+async-channel = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+rfd = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

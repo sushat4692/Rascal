@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/rascal-core", "crates/rascal-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT"
+authors = ["SUSH"]
+
+[workspace.dependencies]
+gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+gpui-component = "=0.5.1"
+gpui-component-assets = "=0.5.1"
+git2 = { version = "0.21", features = ["vendored-libgit2"] }
+thiserror = "2"
+anyhow = "1"
+async-channel = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+dirs = "6"
+rfd = "0.15"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true

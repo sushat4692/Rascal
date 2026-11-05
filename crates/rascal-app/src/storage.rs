@@ -28,6 +28,8 @@ pub struct AppState {
     pub mono_font: Option<String>,
     #[serde(default)]
     pub diff_layout: Option<String>,
+    #[serde(default)]
+    pub image_diff_mode: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

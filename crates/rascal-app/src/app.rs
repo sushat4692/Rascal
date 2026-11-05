@@ -20,6 +20,7 @@ use crate::i18n::{Language, LanguageExt};
 use crate::session::RepoSession;
 use crate::storage::{AppState, Storage};
 use crate::ui::diff_view::DiffLayout;
+use crate::ui::image_view::ImageDiffMode;
 
 actions!(
     rascal,
@@ -83,6 +84,7 @@ pub struct RascalApp {
     settings_scroll: ScrollHandle,
     focus_handle: FocusHandle,
     _diff_layout_subscription: Option<Subscription>,
+    _image_diff_mode_subscription: Option<Subscription>,
 }
 
 impl RascalApp {
@@ -144,6 +146,12 @@ impl RascalApp {
             .and_then(DiffLayout::from_key)
             .unwrap_or_default();
         cx.set_global(diff_layout);
+        let image_diff_mode = state
+            .image_diff_mode
+            .as_deref()
+            .and_then(ImageDiffMode::from_key)
+            .unwrap_or_default();
+        cx.set_global(image_diff_mode);
 
         let focus_handle = cx.focus_handle();
         let mut app = Self {
@@ -161,10 +169,16 @@ impl RascalApp {
             settings_scroll: ScrollHandle::new(),
             focus_handle,
             _diff_layout_subscription: None,
+            _image_diff_mode_subscription: None,
         };
         app._diff_layout_subscription = Some(cx.observe_global::<DiffLayout>(|this, cx| {
             let layout = *cx.global::<DiffLayout>();
             this.state.diff_layout = Some(layout.key().to_string());
+            let _ = this.storage.save(&this.state);
+        }));
+        app._image_diff_mode_subscription = Some(cx.observe_global::<ImageDiffMode>(|this, cx| {
+            let mode = *cx.global::<ImageDiffMode>();
+            this.state.image_diff_mode = Some(mode.key().to_string());
             let _ = this.storage.save(&this.state);
         }));
 

@@ -7,6 +7,7 @@ pub mod diff;
 pub mod error;
 pub mod graph;
 pub mod history;
+pub mod image;
 pub mod model;
 pub mod repo;
 pub mod tree;
@@ -30,6 +31,8 @@ pub const MAX_DIFF_ROWS: usize = 20_000;
 pub const MAX_BLOB_BYTES: u64 = 2 * 1024 * 1024;
 /// Maximum lines kept in a blob view.
 pub const MAX_BLOB_LINES: usize = 50_000;
+/// Maximum number of bytes read for one image side.
+pub const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 /// Maximum immediate tree entries.
 pub const MAX_TREE_ENTRIES: usize = 5_000;
 /// Maximum lanes rendered in the commit graph.

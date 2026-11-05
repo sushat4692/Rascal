@@ -4595,6 +4595,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "gpui-component-assets",
+ "image",
  "rascal-core",
  "rfd",
  "serde",

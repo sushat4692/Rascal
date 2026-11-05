@@ -395,3 +395,47 @@ fn reads_one_file_diff_at_a_commit() {
     assert_eq!(diff.additions, 1);
     assert!(repo.commit_file_diff(third, "a.txt").unwrap().is_none());
 }
+
+#[test]
+fn reads_image_files_and_image_diffs() {
+    let mut fixture = TestRepo::new();
+    fixture.write_bytes("image.png", b"old-image");
+    fixture.commit("add image");
+    fixture.write_bytes("image.png", b"new-image");
+    let second = fixture.commit("edit image");
+
+    let repo = fixture.open();
+    let image = repo.image_file(second, "image.png").unwrap();
+    assert_eq!(image.path, "image.png");
+    assert_eq!(image.bytes, b"new-image");
+    assert!(image.oid.is_some());
+
+    let diff = repo
+        .commit_image_diff(second, None, Some("image.png"))
+        .unwrap();
+    assert_eq!(diff.old.as_ref().unwrap().bytes, b"old-image");
+    assert_eq!(diff.new.as_ref().unwrap().bytes, b"new-image");
+
+    fixture.write_bytes("added.png", b"added");
+    let third = fixture.commit("add image");
+    let diff = repo
+        .commit_image_diff(third, None, Some("added.png"))
+        .unwrap();
+    assert!(diff.old.is_none());
+    assert_eq!(diff.new.as_ref().unwrap().bytes, b"added");
+
+    std::fs::remove_file(fixture.path().join("image.png")).unwrap();
+    let fourth = fixture.commit("delete image");
+    let diff = repo
+        .commit_image_diff(fourth, None, Some("image.png"))
+        .unwrap();
+    assert_eq!(diff.old.as_ref().unwrap().bytes, b"new-image");
+    assert!(diff.new.is_none());
+
+    fixture.write_bytes("image.png", b"worktree-image");
+    let diff = repo
+        .worktree_image_diff("image.png", None, DiffLayer::Untracked)
+        .unwrap();
+    assert!(diff.old.is_none());
+    assert_eq!(diff.new.as_ref().unwrap().bytes, b"worktree-image");
+}

@@ -23,6 +23,7 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
 rfd = { workspace = true }
+image = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

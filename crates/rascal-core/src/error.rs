@@ -6,6 +6,9 @@ pub enum Error {
     #[error("{0}")]
     Git(#[from] git2::Error),
 
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
     #[error("not a Git repository: {0}")]
     NotARepository(PathBuf),
 

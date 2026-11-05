@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use async_channel::{Receiver, Sender};
 use rascal_core::{
-    BlobView, BranchInfo, CommitDetail, DiffLayer, FileDiff, HistoryPage, Oid, RepoInfo,
-    TreeEntries, WorktreeSnapshot,
+    BlobView, BranchInfo, CommitDetail, DiffLayer, FileDiff, HistoryPage, ImageDiff, ImageFile,
+    Oid, RepoInfo, TreeEntries, WorktreeSnapshot,
 };
 
 #[allow(clippy::enum_variant_names)]
@@ -34,6 +34,23 @@ pub enum Command {
         req: u64,
         oid: Oid,
         path: String,
+    },
+    LoadImage {
+        req: u64,
+        oid: Oid,
+        path: String,
+    },
+    LoadCommitImageDiff {
+        req: u64,
+        oid: Oid,
+        old_path: Option<String>,
+        new_path: Option<String>,
+    },
+    LoadWorktreeImageDiff {
+        req: u64,
+        path: String,
+        old_path: Option<String>,
+        layer: DiffLayer,
     },
     LoadCommit {
         req: u64,
@@ -91,6 +108,14 @@ pub enum Event {
     FileHistoryDiff {
         req: u64,
         diff: Option<FileDiff>,
+    },
+    Image {
+        req: u64,
+        image: ImageFile,
+    },
+    ImageDiff {
+        req: u64,
+        diff: ImageDiff,
     },
     Commit {
         req: u64,
@@ -218,6 +243,28 @@ fn handle(repo: &rascal_core::GitRepo, command: Command, event_tx: &Sender<Event
                 Err(err) => send_error(event_tx, req, "ファイル編集履歴", err.to_string()),
             }
         }
+        Command::LoadImage { req, oid, path } => match repo.image_file(oid, &path) {
+            Ok(image) => send(event_tx, Event::Image { req, image }),
+            Err(err) => send_error(event_tx, req, "ファイル内容", err.to_string()),
+        },
+        Command::LoadCommitImageDiff {
+            req,
+            oid,
+            old_path,
+            new_path,
+        } => match repo.commit_image_diff(oid, old_path.as_deref(), new_path.as_deref()) {
+            Ok(diff) => send(event_tx, Event::ImageDiff { req, diff }),
+            Err(err) => send_error(event_tx, req, "差分", err.to_string()),
+        },
+        Command::LoadWorktreeImageDiff {
+            req,
+            path,
+            old_path,
+            layer,
+        } => match repo.worktree_image_diff(&path, old_path.as_deref(), layer) {
+            Ok(diff) => send(event_tx, Event::ImageDiff { req, diff }),
+            Err(err) => send_error(event_tx, req, "差分", err.to_string()),
+        },
         Command::LoadCommit { req, oid } => match repo.commit(oid) {
             Ok(detail) => send(event_tx, Event::Commit { req, detail }),
             Err(err) => send_error(event_tx, req, "コミット", err.to_string()),

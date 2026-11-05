@@ -29,6 +29,7 @@ use crate::git_worker::{Command, Event, GitWorker};
 use crate::i18n::LanguageExt;
 use crate::ui::diff_view::{self, DiffDisplayRow, DiffLayout};
 use crate::ui::graph::{gutter_width_for, lane_color};
+use crate::ui::image_view::{self, ImageView};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileListMode {
@@ -210,6 +211,10 @@ pub struct RepoSession {
     viewer_rows: Rc<Vec<ViewerRow>>,
     viewer_list: ListState,
     viewer_layout: DiffLayout,
+    image_view: Option<Entity<ImageView>>,
+    image_loading: bool,
+    image_error: Option<String>,
+    image_req: u64,
 
     tree_cache: HashMap<String, TreeEntries>,
     tree_loading: HashSet<String>,
@@ -309,6 +314,10 @@ impl RepoSession {
             viewer_rows: Rc::new(Vec::new()),
             viewer_list,
             viewer_layout: cx.try_global::<DiffLayout>().copied().unwrap_or_default(),
+            image_view: None,
+            image_loading: false,
+            image_error: None,
+            image_req: 0,
             tree_cache: HashMap::new(),
             tree_loading: HashSet::new(),
             expanded_dirs: HashSet::new(),
@@ -466,12 +475,24 @@ impl RepoSession {
         new_path: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        if new_path
+            .as_deref()
+            .or(old_path.as_deref())
+            .is_some_and(image_view::is_image_path)
+        {
+            self.request_commit_image_diff(oid, old_path, new_path, cx);
+            return;
+        }
         let req = self.next_req();
         self.diff_req = req;
         self.viewer_loading = true;
         self.viewer_error = None;
         self.diff = None;
         self.blob = None;
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
+        self.image_req = 0;
         self.set_viewer_rows(Vec::new());
         let _ = self.commands.send_blocking(Command::LoadCommitDiff {
             req,
@@ -490,12 +511,22 @@ impl RepoSession {
         layer: DiffLayer,
         cx: &mut Context<Self>,
     ) {
+        if image_view::is_image_path(&path)
+            || old_path.as_deref().is_some_and(image_view::is_image_path)
+        {
+            self.request_worktree_image_diff(path, old_path, layer, cx);
+            return;
+        }
         let req = self.next_req();
         self.diff_req = req;
         self.viewer_loading = true;
         self.viewer_error = None;
         self.diff = None;
         self.blob = None;
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
+        self.image_req = 0;
         self.set_viewer_rows(Vec::new());
         let _ = self.commands.send_blocking(Command::LoadWorktreeDiff {
             req,
@@ -503,6 +534,78 @@ impl RepoSession {
             old_path,
             layer,
         });
+        cx.notify();
+    }
+
+    fn request_commit_image_diff(
+        &mut self,
+        oid: Oid,
+        old_path: Option<String>,
+        new_path: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let req = self.next_req();
+        self.image_req = req;
+        self.image_loading = true;
+        self.image_error = None;
+        self.image_view = None;
+        self.viewer_loading = false;
+        self.viewer_error = None;
+        self.diff = None;
+        self.blob = None;
+        self.diff_req = 0;
+        self.set_viewer_rows(Vec::new());
+        let _ = self.commands.send_blocking(Command::LoadCommitImageDiff {
+            req,
+            oid,
+            old_path,
+            new_path,
+        });
+        cx.notify();
+    }
+
+    fn request_worktree_image_diff(
+        &mut self,
+        path: String,
+        old_path: Option<String>,
+        layer: DiffLayer,
+        cx: &mut Context<Self>,
+    ) {
+        let req = self.next_req();
+        self.image_req = req;
+        self.image_loading = true;
+        self.image_error = None;
+        self.image_view = None;
+        self.viewer_loading = false;
+        self.viewer_error = None;
+        self.diff = None;
+        self.blob = None;
+        self.diff_req = 0;
+        self.set_viewer_rows(Vec::new());
+        let _ = self.commands.send_blocking(Command::LoadWorktreeImageDiff {
+            req,
+            path,
+            old_path,
+            layer,
+        });
+        cx.notify();
+    }
+
+    fn request_image(&mut self, oid: Oid, path: String, cx: &mut Context<Self>) {
+        let req = self.next_req();
+        self.image_req = req;
+        self.image_loading = true;
+        self.image_error = None;
+        self.image_view = None;
+        self.viewer_loading = false;
+        self.viewer_error = None;
+        self.diff = None;
+        self.blob = None;
+        self.diff_req = 0;
+        self.set_viewer_rows(Vec::new());
+        let _ = self
+            .commands
+            .send_blocking(Command::LoadImage { req, oid, path });
         cx.notify();
     }
 
@@ -521,12 +624,20 @@ impl RepoSession {
     }
 
     fn request_blob(&mut self, oid: Oid, path: String, cx: &mut Context<Self>) {
+        if image_view::is_image_path(&path) {
+            self.request_image(oid, path, cx);
+            return;
+        }
         let req = self.next_req();
         self.blob_req = req;
         self.viewer_loading = true;
         self.viewer_error = None;
         self.diff = None;
         self.blob = None;
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
+        self.image_req = 0;
         self.set_viewer_rows(Vec::new());
         let _ = self
             .commands
@@ -622,6 +733,24 @@ impl RepoSession {
                 }
                 cx.notify();
             }
+            Event::Image { req, image } => {
+                if req != self.image_req {
+                    return;
+                }
+                self.image_loading = false;
+                self.image_error = None;
+                self.image_view = Some(ImageView::single(image, cx));
+                cx.notify();
+            }
+            Event::ImageDiff { req, diff } => {
+                if req != self.image_req {
+                    return;
+                }
+                self.image_loading = false;
+                self.image_error = None;
+                self.image_view = Some(ImageView::diff(diff, cx));
+                cx.notify();
+            }
             Event::CommitDiff { req, diff } => {
                 if req != self.diff_req {
                     return;
@@ -676,6 +805,12 @@ impl RepoSession {
                 context,
                 message,
             } => {
+                if req == self.image_req {
+                    self.image_loading = false;
+                    self.image_error = Some(message);
+                    cx.notify();
+                    return;
+                }
                 let _ = req;
                 match context {
                     "履歴" => {
@@ -767,6 +902,11 @@ impl RepoSession {
     fn clear_viewer(&mut self) {
         self.diff = None;
         self.blob = None;
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
+        self.image_req = 0;
+        self.diff_req = 0;
         self.viewer_error = None;
         self.viewer_loading = false;
         self.set_viewer_rows(Vec::new());
@@ -781,6 +921,9 @@ impl RepoSession {
         self.viewer_layout = layout;
         self.diff = Some(diff);
         self.blob = None;
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
         self.set_viewer_rows(rows);
         self.viewer_list.scroll_to(ListOffset {
             item_ix: 0,
@@ -834,6 +977,9 @@ impl RepoSession {
         }
         self.blob = Some(blob);
         self.diff = None;
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
         self.set_viewer_rows(rows);
     }
 
@@ -1847,7 +1993,36 @@ impl RepoSession {
         let header = self.viewer_header(cx);
         let theme = cx.theme();
 
-        let body = if let Some(error) = &self.viewer_error {
+        let body = if let Some(image) = &self.image_view {
+            div()
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .child(image.clone())
+                .into_any_element()
+        } else if self.image_loading {
+            div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .p_6()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child(cx.tr("画像を読み込み中…"))
+                .into_any_element()
+        } else if let Some(error) = &self.image_error {
+            div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .p_6()
+                .text_sm()
+                .text_color(theme.danger)
+                .child(format!("{}: {error}", cx.tr("画像を読み込めません")))
+                .into_any_element()
+        } else if let Some(error) = &self.viewer_error {
             div()
                 .flex_1()
                 .flex()

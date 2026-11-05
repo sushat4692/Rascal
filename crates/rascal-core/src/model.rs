@@ -192,6 +192,24 @@ pub struct DiffRow {
 }
 
 #[derive(Clone, Debug)]
+pub struct ImageFile {
+    pub path: String,
+    pub oid: Option<Oid>,
+    pub size: u64,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ImageDiff {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub status: FileStatus,
+    pub base_label: String,
+    pub old: Option<ImageFile>,
+    pub new: Option<ImageFile>,
+}
+
+#[derive(Clone, Debug)]
 pub struct FileDiff {
     pub path: String,
     pub old_path: Option<String>,

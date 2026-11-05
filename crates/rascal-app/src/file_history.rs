@@ -14,6 +14,7 @@ use crate::app::{CloseWindow, Quit};
 use crate::git_worker::{Command, Event, GitWorker};
 use crate::i18n::LanguageExt;
 use crate::ui::diff_view::{self, DiffDisplayRow, DiffInfo, DiffLayout};
+use crate::ui::image_view::{self, ImageView};
 
 const LEFT_PANE_WIDTH: f32 = 360.0;
 const HISTORY_ROW_HEIGHT: f32 = 76.0;
@@ -38,6 +39,10 @@ pub struct FileHistoryView {
     diff_loading: bool,
     diff_error: Option<String>,
     diff_req: u64,
+    image_view: Option<Entity<ImageView>>,
+    image_loading: bool,
+    image_error: Option<String>,
+    image_req: u64,
     focus_handle: FocusHandle,
 }
 
@@ -83,6 +88,10 @@ impl FileHistoryView {
             diff_loading: false,
             diff_error: None,
             diff_req: 0,
+            image_view: None,
+            image_loading: false,
+            image_error: None,
+            image_req: 0,
             focus_handle: cx.focus_handle(),
         };
 
@@ -131,13 +140,25 @@ impl FileHistoryView {
                 self.set_diff(diff, cx);
                 cx.notify();
             }
+            Event::ImageDiff { req, diff } => {
+                if req != self.image_req {
+                    return;
+                }
+                self.image_loading = false;
+                self.image_error = None;
+                self.image_view = Some(ImageView::diff(diff, cx));
+                cx.notify();
+            }
             Event::Failed { message } => {
                 self.loading = false;
                 self.error = Some(message);
                 cx.notify();
             }
             Event::Error { req, message, .. } => {
-                if req == self.diff_req {
+                if req == self.image_req {
+                    self.image_loading = false;
+                    self.image_error = Some(message);
+                } else if req == self.diff_req {
                     self.diff_loading = false;
                     self.diff_error = Some(message);
                 } else if req == self.pending_req {
@@ -155,16 +176,36 @@ impl FileHistoryView {
             return;
         }
         self.selected = Some(oid);
-        self.diff_loading = true;
-        self.diff_error = None;
-        self.diff = None;
-        self.set_diff_rows(Vec::new());
-        self.diff_req += 1;
-        let _ = self.commands.try_send(Command::LoadFileHistoryDiff {
-            req: self.diff_req,
-            oid,
-            path: self.path.clone(),
-        });
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
+        if image_view::is_image_path(&self.path) {
+            self.diff_loading = false;
+            self.diff_error = None;
+            self.diff = None;
+            self.diff_req = 0;
+            self.set_diff_rows(Vec::new());
+            self.image_loading = true;
+            self.image_req += 1;
+            let _ = self.commands.try_send(Command::LoadCommitImageDiff {
+                req: self.image_req,
+                oid,
+                old_path: None,
+                new_path: Some(self.path.clone()),
+            });
+        } else {
+            self.diff_loading = true;
+            self.diff_error = None;
+            self.diff = None;
+            self.image_req = 0;
+            self.set_diff_rows(Vec::new());
+            self.diff_req += 1;
+            let _ = self.commands.try_send(Command::LoadFileHistoryDiff {
+                req: self.diff_req,
+                oid,
+                path: self.path.clone(),
+            });
+        }
         cx.notify();
     }
 
@@ -176,6 +217,9 @@ impl FileHistoryView {
         };
         self.diff_layout = layout;
         self.diff = diff;
+        self.image_view = None;
+        self.image_loading = false;
+        self.image_error = None;
         self.set_diff_rows(rows);
         self.diff_list.scroll_to(ListOffset {
             item_ix: 0,
@@ -383,7 +427,9 @@ impl FileHistoryView {
                 .child(cx.tr("コミットを選択してください"))
                 .into_any_element();
         };
-        let layout_control = diff_view::layout_toggle("history-diff-layout", cx);
+        let layout_control =
+            (self.image_view.is_none() && !self.image_loading && self.image_error.is_none())
+                .then(|| diff_view::layout_toggle("history-diff-layout", cx));
         let theme = cx.theme();
 
         let additions = self.diff.as_ref().map(|diff| diff.additions).unwrap_or(0);
@@ -415,7 +461,7 @@ impl FileHistoryView {
                             .flex()
                             .items_center()
                             .gap_2()
-                            .child(layout_control)
+                            .when_some(layout_control, |this, control| this.child(control))
                             .child(
                                 div()
                                     .text_xs()
@@ -453,6 +499,41 @@ impl FileHistoryView {
 
     fn render_diff_body(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
+
+        if let Some(image) = &self.image_view {
+            return div()
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .child(image.clone())
+                .into_any_element();
+        }
+
+        if self.image_loading {
+            return div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .p_6()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child(cx.tr("画像を読み込み中…"))
+                .into_any_element();
+        }
+
+        if let Some(error) = &self.image_error {
+            return div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .p_6()
+                .text_sm()
+                .text_color(theme.danger)
+                .child(format!("{}: {error}", cx.tr("画像を読み込めません")))
+                .into_any_element();
+        }
 
         if let Some(error) = &self.diff_error {
             return div()

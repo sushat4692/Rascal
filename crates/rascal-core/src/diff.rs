@@ -150,7 +150,10 @@ impl GitRepo {
         Ok(None)
     }
 
-    fn commit_diff_base<'repo>(&'repo self, commit: &git2::Commit<'_>) -> Result<Diff<'repo>> {
+    pub(crate) fn commit_diff_base<'repo>(
+        &'repo self,
+        commit: &git2::Commit<'_>,
+    ) -> Result<Diff<'repo>> {
         let repo = self.repository();
         let new_tree = commit.tree()?;
         let old_tree = if commit.parent_count() > 0 {

@@ -1,5 +1,9 @@
 # Rascal
 
+<p align="center">
+  <img src="docs/icon.png" width="160" alt="Rascal app icon">
+</p>
+
 GPUI で作った、軽量・高速な **読み取り専用** Git 履歴ビューア。
 
 ![Rascal のメイン画面](docs/screenshot.png)

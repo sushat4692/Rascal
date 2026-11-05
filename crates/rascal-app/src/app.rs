@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::TimeZone;
 
+use gpui::ClipboardItem;
 use gpui::StatefulInteractiveElement;
 use gpui::hsla;
 use gpui::prelude::*;
@@ -15,6 +16,7 @@ use gpui_component::select::{SearchableVec, Select, SelectEvent, SelectItem, Sel
 use gpui_component::theme::{ActiveTheme, Theme, ThemeMode};
 use gpui_component::{Disableable, Icon, IconName, Selectable, Sizable, TitleBar, WindowExt};
 
+use crate::cli;
 use crate::diff_theme::DiffTheme;
 use crate::i18n::{Language, LanguageExt};
 use crate::session::RepoSession;
@@ -424,6 +426,53 @@ impl RascalApp {
             self.state.mono_font.as_deref(),
         );
         self.refresh_windows_and_sessions(cx);
+        cx.notify();
+    }
+
+    fn install_cli(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match cli::install() {
+            Ok(result) => {
+                let message = format!(
+                    "{}: {}",
+                    cx.tr("CLIコマンドをインストールしました"),
+                    result.command_path.display()
+                );
+                if result.in_path {
+                    window.push_notification(Notification::success(message), cx);
+                } else {
+                    window.push_notification(
+                        Notification::warning(format!(
+                            "{message}\n{}",
+                            cx.tr("PATHが通っていません。次の行をシェル設定に追加してください。")
+                        )),
+                        cx,
+                    );
+                }
+            }
+            Err(error) => {
+                window.push_notification(
+                    Notification::error(format!(
+                        "{}: {error}",
+                        cx.tr("CLIコマンドをインストールできません")
+                    )),
+                    cx,
+                );
+            }
+        }
+        cx.notify();
+    }
+
+    fn uninstall_cli(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match cli::uninstall() {
+            Ok(()) => window.push_notification(
+                Notification::success(cx.tr("CLIコマンドを削除しました")),
+                cx,
+            ),
+            Err(error) => window.push_notification(
+                Notification::error(format!("{}: {error}", cx.tr("CLIコマンドを削除できません"))),
+                cx,
+            ),
+        }
         cx.notify();
     }
 
@@ -961,6 +1010,11 @@ impl RascalApp {
                 theme,
             ))
             .child(settings_section(
+                cx.tr("コマンドライン"),
+                self.render_cli_settings(entity.clone(), theme, cx),
+                theme,
+            ))
+            .child(settings_section(
                 cx.tr("アプリテーマ"),
                 div()
                     .flex()
@@ -1010,6 +1064,169 @@ impl RascalApp {
                     .child(format!("Rascal {} · GPUI", env!("CARGO_PKG_VERSION"))),
             )
             .into_any_element()
+    }
+
+    fn render_cli_settings(
+        &self,
+        entity: Entity<RascalApp>,
+        theme: &gpui_component::theme::Theme,
+        cx: &App,
+    ) -> AnyElement {
+        let status = cli::status();
+        let bundled = status.app_bundle.is_some();
+        let installed = status.installed;
+        let in_path = status.in_path;
+        let command_path = status.command_path.display().to_string();
+        let mono_font = theme.mono_font_family.clone();
+        let install_entity = entity.clone();
+        let uninstall_entity = entity.clone();
+
+        let install_label = if installed {
+            cx.tr("再インストール")
+        } else {
+            cx.tr("インストール")
+        };
+        let status_label = if installed {
+            cx.tr("インストール済み")
+        } else {
+            cx.tr("未インストール")
+        };
+
+        let mut actions = div().flex().items_center().gap_2().child(
+            Button::new("cli-install")
+                .primary()
+                .label(install_label)
+                .disabled(!bundled)
+                .on_click(move |_, window, cx| {
+                    install_entity.update(cx, |this, cx| this.install_cli(window, cx));
+                }),
+        );
+        if installed {
+            actions = actions.child(
+                Button::new("cli-uninstall")
+                    .ghost()
+                    .label(cx.tr("アンインストール"))
+                    .on_click(move |_, window, cx| {
+                        uninstall_entity.update(cx, |this, cx| this.uninstall_cli(window, cx));
+                    }),
+            );
+        }
+
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(div().text_sm().text_color(theme.muted_foreground).child(
+                cx.tr("ターミナルからRascalを起動する `rascal` コマンドをインストールします。"),
+            ))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().size(px(7.0)).rounded_full().bg(if installed {
+                        theme.success
+                    } else {
+                        theme.muted_foreground
+                    }))
+                    .child(div().text_sm().child(status_label))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(format!("· {command_path}")),
+                    ),
+            )
+            .child(actions);
+
+        if !bundled {
+            body = body.child(
+                div()
+                    .rounded(px(5.0))
+                    .border_1()
+                    .border_color(theme.warning.opacity(0.5))
+                    .bg(theme.warning.opacity(0.08))
+                    .px_3()
+                    .py_2()
+                    .text_xs()
+                    .text_color(theme.warning)
+                    .child(cx.tr("Rascal.app から起動するとインストールできます。")),
+            );
+        }
+
+        if bundled && !in_path {
+            let path_command = "export PATH=\"$HOME/.local/bin:$PATH\"".to_string();
+            body = body.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .rounded(px(5.0))
+                    .border_1()
+                    .border_color(theme.border)
+                    .bg(theme.muted.opacity(0.2))
+                    .p_3()
+                    .child(div().text_xs().text_color(theme.warning).child(
+                        cx.tr("PATHが通っていません。次の行をシェル設定に追加してください。"),
+                    ))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .font_family(mono_font.clone())
+                                    .text_xs()
+                                    .child(path_command.clone()),
+                            )
+                            .child(
+                                Button::new("cli-copy-path")
+                                    .ghost()
+                                    .small()
+                                    .label(cx.tr("コピー"))
+                                    .on_click(move |_, window, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            path_command.clone(),
+                                        ));
+                                        window.push_notification(
+                                            Notification::success(cx.tr("コピーしました")),
+                                            cx,
+                                        );
+                                    }),
+                            ),
+                    ),
+            );
+        }
+
+        body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(cx.tr("使用例")),
+                )
+                .child(
+                    div()
+                        .rounded(px(5.0))
+                        .bg(theme.muted.opacity(0.25))
+                        .px_3()
+                        .py_2()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .font_family(mono_font)
+                        .text_xs()
+                        .child("rascal")
+                        .child("rascal /path/to/repository"),
+                ),
+        )
+        .into_any_element()
     }
 
     fn render_dashboard(&self, cx: &mut Context<Self>) -> AnyElement {

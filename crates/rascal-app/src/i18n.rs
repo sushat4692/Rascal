@@ -91,6 +91,33 @@ fn english(japanese: &str) -> Option<&'static str> {
         "アプリテーマを切り替える" => "Toggle App Theme",
         "テーマを切り替える" => "Toggle Theme",
         "設定" => "Settings",
+
+        // CLI
+        "コマンドライン" => "Command line",
+        "ターミナルからRascalを起動する `rascal` コマンドをインストールします。" => {
+            "Install a `rascal` command to launch Rascal from the terminal."
+        }
+        "インストール済み" => "Installed",
+        "未インストール" => "Not installed",
+        "インストール" => "Install",
+        "再インストール" => "Reinstall",
+        "アンインストール" => "Uninstall",
+        "Rascal.app から起動するとインストールできます。" => {
+            "Launch Rascal from Rascal.app to install the command."
+        }
+        "PATHが通っていません。次の行をシェル設定に追加してください。" => {
+            "The install directory is not in PATH. Add the following line to your shell configuration."
+        }
+        "コピー" => "Copy",
+        "コピーしました" => "Copied",
+        "使用例" => "Usage",
+        "CLIコマンドをインストールしました" => "Installed the CLI command",
+        "CLIコマンドを削除しました" => "Removed the CLI command",
+        "CLIコマンドをインストールできません" => {
+            "Could not install the CLI command"
+        }
+        "CLIコマンドを削除できません" => "Could not remove the CLI command",
+
         "並べて比較" => "Side by side",
         "スライダー比較" => "Slider",
         "差分ハイライト" => "Difference",

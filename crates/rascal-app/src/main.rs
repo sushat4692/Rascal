@@ -6,6 +6,7 @@ use gpui_component::TitleBar;
 
 mod app;
 mod assets;
+mod cli;
 mod diff_theme;
 mod file_history;
 mod git_worker;

@@ -10,7 +10,7 @@ use gpui_component::theme::ActiveTheme;
 use gpui_component::{Disableable, v_flex};
 use rascal_core::{CommitSummary, FileDiff, HISTORY_PAGE_SIZE, Oid, short_oid};
 
-use crate::app::{CloseWindow, Quit};
+use crate::app::{CloseTab, CloseWindow, Quit};
 use crate::git_worker::{Command, Event, GitWorker};
 use crate::i18n::LanguageExt;
 use crate::ui::diff_view::{self, DiffDisplayRow, DiffInfo, DiffLayout};
@@ -731,6 +731,9 @@ impl Render for FileHistoryView {
         div()
             .key_context("Rascal")
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|_this, _: &CloseTab, window, _cx| {
+                window.remove_window();
+            }))
             .on_action(cx.listener(|_this, _: &CloseWindow, window, _cx| {
                 window.remove_window();
             }))

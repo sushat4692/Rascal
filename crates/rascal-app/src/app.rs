@@ -110,8 +110,8 @@ impl RascalApp {
         cx.bind_keys([
             KeyBinding::new("cmd-o", OpenRepository, Some(CONTEXT)),
             KeyBinding::new("cmd-r", Refresh, Some(CONTEXT)),
-            KeyBinding::new("cmd-w", CloseWindow, Some(CONTEXT)),
-            KeyBinding::new("cmd-shift-w", CloseTab, Some(CONTEXT)),
+            KeyBinding::new("cmd-w", CloseTab, Some(CONTEXT)),
+            KeyBinding::new("cmd-shift-w", CloseWindow, Some(CONTEXT)),
             KeyBinding::new("cmd-shift-t", ToggleTheme, Some(CONTEXT)),
             KeyBinding::new("cmd-shift-d", ShowDashboard, Some(CONTEXT)),
             KeyBinding::new("cmd-,", OpenSettings, Some(CONTEXT)),
@@ -624,6 +624,14 @@ impl RascalApp {
             tab.update(cx, |_, cx| cx.notify());
         }
         cx.refresh_windows();
+    }
+
+    fn close_tab_or_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.tabs.is_empty() || self.showing_dashboard {
+            window.remove_window();
+            return;
+        }
+        self.close_active_tab(window, cx);
     }
 
     fn close_active_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1850,7 +1858,7 @@ impl Render for RascalApp {
                 }
             }))
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
-                this.close_active_tab(window, cx);
+                this.close_tab_or_window(window, cx);
             }))
             .on_action(cx.listener(|_this, _: &CloseWindow, window, _cx| {
                 window.remove_window();

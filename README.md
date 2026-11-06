@@ -4,100 +4,100 @@
   <img src="docs/icon.png" width="160" alt="Rascal app icon">
 </p>
 
-GPUI で作った、軽量・高速な **読み取り専用** Git 履歴ビューア。
+<p align="center">A lightweight, read-only Git history viewer built with GPUI.</p>
 
-![Rascal のメイン画面](docs/screenshot.png)
+Rascal is a Git GUI for reading history and reviewing changes. It never stages,
+commits, checks out, fetches, pushes, merges, or cherry-picks.
 
-![変更一覧のツリー表示](docs/changes-tree.png)
+## Highlights
 
-![ダッシュボード](docs/dashboard.png)
+- **Read-only by design** — no write operations, no accidental repository changes.
+- **Native and lightweight** — GPUI, no WebView, no network access, and no file watching.
+- **Responsive on large repositories** — paged history, lazy trees, and a dedicated
+  worktree-status worker; status scans never block history or diff interactions.
 
-![画像差分（スライダー比較）](docs/image-diff.png)
+## Screenshots
 
-![設定ウィンドウ（英語表示）](docs/settings.png)
+| Main window | Changes tree | Dashboard |
+|:---:|:---:|:---:|
+| <a href="docs/screenshot.png"><img src="docs/screenshot.png" width="100%" alt="Main window"></a> | <a href="docs/changes-tree.png"><img src="docs/changes-tree.png" width="100%" alt="Changes tree"></a> | <a href="docs/dashboard.png"><img src="docs/dashboard.png" width="100%" alt="Dashboard"></a> |
+| **Image diff** | **Settings** | **File history** |
+| <a href="docs/image-diff.png"><img src="docs/image-diff.png" width="100%" alt="Image diff with slider comparison"></a> | <a href="docs/settings.png"><img src="docs/settings.png" width="100%" alt="Settings window"></a> | <a href="docs/file-history.png"><img src="docs/file-history.png" width="100%" alt="File history window"></a> |
 
-![ファイル編集履歴](docs/file-history.png)
+## Features
 
-Rascal は「履歴を読む」「変更点を見る」ためだけの Git GUI です。stage、commit、
-checkout、fetch/push、merge、cherry-pick などの書き込み操作は行いません。
+- Commit graph and paged commit history
+- Unified and side-by-side diff views with hunk headers and line numbers
+- Rename, binary, and submodule handling
+- Standard, high-contrast, and colorblind-friendly diff palettes
+- Image preview and image diffs
+  - Side-by-side comparison
+  - Draggable slider comparison
+  - Difference highlighting
+- File tree at any commit
+- Working-tree changes grouped by staged, unstaged, and untracked
+- List and directory-tree views for changed files
+- Per-file history window with its own diff pane
+- Multiple repository tabs, dashboard, and session restore
+- Settings window with Japanese and English UI
+- App theme, diff theme, and font selection
+- CLI launcher installation from the settings window
+- File context menus and keyboard shortcuts
+- Always-visible scrollbars in scrollable panes
 
-## 特長
+## Requirements
 
-- **コンパクトな履歴表示** — 1コミット1行。作者・日付・SHAを右側に固定配置
-- **アイコンだけのタイトルバー操作** — 開く・更新・設定・テーマはホバーでツールチップとショートカットを表示
-- **コミットグラフ** — レーン付きの履歴表示。ブランチの分岐・マージを色付きの線で表示
-- **高速な履歴ブラウズ** — 仮想リスト、300件ずつのページ読み込み、バックグラウンドの Git ワーカー
-- **統合差分ビューア** — 行番号、hunk、追加/削除の色分け、rename、binary、submodule 表示
-- **画像プレビュー / 画像差分** — PNG・JPEG・GIF・WebP・BMP・TIFF・SVGに対応。並べて比較 / スライダー比較 / 差分ハイライトを切替
-- **CLIコマンド** — 設定ウィンドウから `~/.local/bin/rascal` をインストールし、ターミナルからアプリを起動
-- **常時表示スクロールバー** — 履歴、diff、ファイル一覧、設定、ダッシュボードなどでオーバーフロー時に表示
-- **1ペイン / 2ペイン差分** — unified と旧/新 side-by-side を各diffヘッダから切替（設定は保存）
-- **差分カラーテーマ** — 標準 / 高コントラスト / 色覚配慮（青・オレンジ）をプレビュー付きで選択
-- **設定ウィンドウ** — 言語、アプリテーマ、差分テーマ、フォントを一か所で変更
-- **日本語 / English** — UI を日本語・英語で切り替え可能
-- **フォント選択** — インストール済みフォントをコンボボックスから選択。設定ウィンドウを開いたときに読み込み
-- **ダークテーマのコントラスト調整** — 補助テキスト・境界線・選択行・ブランチバッジを見やすく調整
-- **ファイルツリー** — コミット時点の全ファイルをディレクトリ単位で遅延読み込みし、内容を表示
-- **変更一覧のツリー表示** — 変更ファイルをディレクトリ階層で折りたたみ表示（一覧 / ツリー切替）
-- **ファイルツリーのコンテキストメニュー** — 開く、アプリ指定、Finder表示、パスコピー、ファイル編集履歴
-- **ファイル編集履歴** — 対象ファイルを変更したコミットと、選択コミットのdiffを2ペインで表示。diff側は1ペイン / 2ペインを切替可能
-- **未コミット変更** — staged / unstaged / untracked をグループ表示して差分を閲覧
-- **複数リポジトリのタブ** — 複数のリポジトリを同時に開いて切り替え
-- **ダッシュボード** — 最近開いたリポジトリを履歴から選択。開いていたタブは次回起動時に復元
-- **軽量な UI** — WebView なし、ネットワークアクセスなし、ファイル監視なし
-- **ライト / ダークテーマ** — 設定は次回起動時に復元
-
-
-## 動作環境
-
-- macOS (Apple Silicon を主対象)
-- Rust 1.92 以上
+- macOS (Apple Silicon is the primary target)
+- Rust 1.92 or later
 - Xcode Command Line Tools
-- CMake（同梱 libgit2 のビルド用）
+- CMake (for the vendored libgit2 build)
 
-GPUI は `runtime_shaders` 機能でビルドしているため、Metal Toolchain の追加
-ダウンロードは不要です。その代わり、初回起動時のみ Metal シェーダーの準備に
-少し時間がかかることがあります（2回目以降は高速に起動します）。
+GPUI is built with its `runtime_shaders` feature, so the Metal Toolchain is not
+required. The first launch may still take a moment while Metal shaders are
+prepared; subsequent launches are faster.
 
-## ビルドと起動
+## Build and Run
 
-### macOSアプリとして起動（アイコン付き・推奨）
+### macOS app bundle (recommended)
 
 ```sh
 ./scripts/bundle-macos.sh
 open target/release/Rascal.app
 ```
 
-`Rascal.app` には `Rascal.icns` が組み込まれ、Finder / Dock にアプリアイコンが表示されます。
-リポジトリを引数付きで開く場合:
+The bundle embeds `Rascal.icns` so the icon appears in Finder and the Dock.
+To open a repository on a cold launch:
 
 ```sh
 open target/release/Rascal.app --args /path/to/repository
 ```
 
-### 開発用に直接実行
+To open repositories in an already-running instance, install the CLI command
+from **Settings → Command line** and use `rascal /path/to/repository`.
 
-アイコンは `.app` バンドルにのみ適用されます。`cargo run` は開発用です。
+### Development
+
+Icons only apply to the `.app` bundle; `cargo run` is for development.
 
 ```sh
 cargo run --release -p rascal-app -- /path/to/repository
 ```
 
-複数のリポジトリをタブで開く場合:
+Open multiple repositories as tabs:
 
 ```sh
 cargo run --release -p rascal-app -- /path/to/repo-a /path/to/repo-b
 ```
 
-引数なしで起動すると、前回終了時に開いていたタブを復元します。
-前回のタブがない場合は、最近開いたリポジトリ一覧付きのダッシュボードを表示します。
-ダッシュボードはタイトルバー左のアイコン、または `⌘⇧D` でいつでも開けます。
+Without arguments, Rascal restores the tabs that were open at the previous exit.
+If there are no saved tabs, it shows the dashboard with recent repositories.
+Open the dashboard at any time from the title bar or with `⌘⇧D`.
 
 ```sh
 cargo run --release -p rascal-app
 ```
 
-CLI:
+CLI help:
 
 ```text
 rascal [repository ...]
@@ -105,109 +105,108 @@ rascal --version
 rascal --help
 ```
 
-## CLIコマンド
+## CLI
 
-設定ウィンドウの **コマンドライン** からインストールできます。
+Install the `rascal` command from **Settings → Command line**.
 
-- インストール先: `~/.local/bin/rascal`
-- sudoやシェル設定の自動変更は行いません
-- `~/.local/bin` がPATHにない場合は設定例を表示します
+- Install location: `~/.local/bin/rascal`
+- No sudo and no automatic changes to shell configuration
+- If `~/.local/bin` is not in `PATH`, the settings window shows a setup example
 
 ```sh
 rascal
 rascal /path/to/repository
 ```
 
-`Rascal.app` から起動した場合のみインストールできます。アプリを移動した場合は
-再インストールするか、同じbundle IDで登録されたアプリが起動されます。
-Rascalがすでに起動している場合でも、指定したリポジトリが既存ウィンドウの
-タブとして開きます。相対パス・スペースを含むパス・複数リポジトリに対応します。
+Installation is available only when Rascal is running from its `.app` bundle.
+If the app moves, reinstall the command or rely on the bundle identifier fallback.
+When Rascal is already running, `rascal /path/to/repository` opens the repository
+in a tab in the existing window. Relative paths, paths containing spaces, and
+multiple repositories are supported.
 
-古い形式のCLIラッパーがインストールされている場合は、Rascalの起動時に
-自動で新しいラッパーへ更新されます。
+Launchers created by older versions are upgraded automatically when Rascal starts.
 
-## 操作
+## Usage
 
-| 操作 | キー |
+| Action | Shortcut |
 | --- | --- |
-| リポジトリを開く | `⌘O` |
-| 更新 | `⌘R` |
-| ダッシュボード | `⌘⇧D` |
-| 設定 | `⌘,` |
-| コミットを絞り込む | `⌘F` |
-| タブを閉じる | `⌘W` |
-| ウィンドウを閉じる | `⌘⇧W` |
-| テーマ切替 | `⌘⇧T` |
-| 履歴の移動 | `↑` / `↓` |
-| 終了 | `⌘Q` |
+| Open repository | `⌘O` |
+| Refresh | `⌘R` |
+| Dashboard | `⌘⇧D` |
+| Settings | `⌘,` |
+| Filter commits | `⌘F` |
+| Close tab | `⌘W` |
+| Close window | `⌘⇧W` |
+| Toggle theme | `⌘⇧T` |
+| Navigate history | `↑` / `↓` |
+| Quit | `⌘Q` |
 
-- ダッシュボードの **最近のリポジトリ** から過去に開いたリポジトリを選択できます。
-  開いていたタブは終了時に保存され、次回起動時に自動で復元されます。
-- 左サイドバーの **HEAD** またはブランチをクリックすると、その履歴を表示します。
-  チェックアウトは行いません。
-- 履歴の **未コミットの変更** 行をクリックすると、作業ツリーの差分を表示します。
-- 下段の **変更 / ファイル** で、コミットの変更ファイルとコミット時点のファイルツリーを
-  切り替えます。**変更** の中では **一覧 / ツリー** を切り替えられ、変更ファイルを
-  ディレクトリ階層で折りたためます。
-- **SHAをコピー** でコミットハッシュをクリップボードへコピーします。
-- 画像ファイルはそのままプレビューでき、コミット / 作業ツリーの画像変更は
-  **並べて比較 / スライダー比較 / 差分ハイライト** の3モードで確認できます。
-- 画像比較の表示モードはアプリ共通で保存されます。ズーム・パンは行いません。
-- `⌘W` で現在のタブを閉じます。最後のタブを閉じるとダッシュボードが表示されます。
-  ダッシュボード表示中またはタブがない状態で `⌘W` を押すとウィンドウが閉じます。
-- `⌘⇧W` でタブの有無にかかわらずウィンドウを閉じます。最後のウィンドウを閉じるとアプリを終了します。
-- 設定ウィンドウとファイル編集履歴ウィンドウでは、`⌘W` / `⌘⇧W` でそのウィンドウだけを閉じます。
-- 差分ヘッダの **1ペイン / 2ペイン** で、unified差分と旧/新のside-by-side差分を切り替えます。
-  選択はアプリ共通で保存され、メイン画面とファイル編集履歴の両方に反映されます。
-- ファイル一覧・ファイルツリーのファイルを右クリックすると、次のメニューが開きます。
-  - 開く / アプリを指定して開く
-  - 対象フォルダをFinderで開く
-  - 絶対パスをコピー / 相対パスをコピー
-  - ファイル編集履歴（履歴とdiffを2ペインで表示する別ウィンドウ）
-- マージコミットの差分は第1親との差分です。
-- タイトルバーの歯車アイコン、またはメニューの「Rascal > 設定…」（`⌘,`）で
-  設定ウィンドウを開きます。ダッシュボードの **設定** ボタンからも開けます。
-  メインウィンドウはそのまま残ります。差分テーマはプレビューを見ながら選択できます。
-- 設定ウィンドウは1つだけ開けます。再度開くと既存の設定ウィンドウが前面に出ます。
-- 設定ウィンドウでは UI の言語（日本語 / English）、アプリテーマ、差分テーマ、
-  UI フォント、コード・差分フォントを変更できます。変更内容は自動保存されます。
-- フォントはインストール済みフォントからコンボボックスで選択します。フォント一覧は
-  設定ウィンドウを開いたときに読み込まれ、アプリ起動時には走査しません。
+- Select a recent repository on the dashboard. Open tabs are saved at exit and
+  restored on the next launch.
+- Click **HEAD** or a branch in the left sidebar to show its history. Checkout is
+  never performed.
+- Click the **Uncommitted changes** row to view the working-tree diff.
+- Use **Changes / Files** to switch between a commit's changed files and the
+  commit's file tree. In **Changes**, switch between list and directory-tree views.
+- Use **Copy SHA** to copy a commit hash.
+- Image files can be previewed directly. Committed and working-tree image changes
+  can be compared in three modes: **Side by side**, **Slider**, and **Difference**.
+  The comparison mode is shared across the app. Zoom and pan are not supported.
+- `⌘W` closes the current tab. Closing the last tab shows the dashboard.
+  With the dashboard visible or no tabs open, `⌘W` closes the window.
+- `⌘⇧W` closes the window regardless of open tabs. Closing the last window quits
+  the app.
+- In the settings and file-history windows, `⌘W` and `⌘⇧W` close that window only.
+- Use the diff header to switch between unified and side-by-side views. The choice
+  is shared across the app and applies to both the main viewer and file history.
+- Right-click a file in the file list or file tree to open it, open it with a
+  chosen application, show it in Finder, copy its path, or open its file history.
+- Merge commits are diffed against their first parent.
+- Open the settings window from the title-bar gear icon or **Rascal → Settings…**
+  (`⌘,`). It can also be opened from the dashboard.
+- The settings window is a single window. Opening it again brings the existing
+  window to the front. It configures the UI language (Japanese / English), app
+  theme, diff theme, UI font, and code/diff font. Changes are saved automatically.
+- Font lists are loaded when the settings window opens, not during app startup.
 
-## 設計
+## Architecture
 
-```
-crates/rascal-core/   Git の読み取り専用エンジン（GPUI非依存）
-  repo.rs             リポジトリ情報・ブランチ・status
-  history.rs          revwalk・refs 装飾・ページング
-  diff.rs             コミット詳細・統合差分
-  worktree.rs         staged / unstaged / untracked
-  tree.rs             遅延ツリー・blob 内容
-  graph.rs            コミットグラフのレーン配置（純粋関数）
+```text
+crates/rascal-core/   Read-only Git engine (independent of GPUI)
+  repo.rs             Repository metadata, branches, status
+  history.rs          Revwalk, ref decoration, paging
+  diff.rs             Commit details and unified diffs
+  worktree.rs         Staged / unstaged / untracked changes
+  tree.rs             Lazy trees and blob contents
+  graph.rs            Commit-graph lane layout (pure functions)
 
-crates/rascal-app/    GPUI UI とバイナリ
-  app.rs              タイトルバー・タブ・ダッシュボード・メニュー
-  session.rs          1リポジトリ分の状態・描画・ファイルコンテキストメニュー
-  settings.rs         設定ウィンドウ
-  file_history.rs     ファイル編集履歴ウィンドウ
-  ui/image_view.rs    画像プレビュー・画像比較
+crates/rascal-app/    GPUI UI and application binary
+  app.rs              Title bar, tabs, dashboard, menus
+  session.rs          Per-repository state, rendering, file context menu
+  settings.rs         Settings window
+  file_history.rs     File history window
+  git_worker.rs       Per-tab Git workers
+  storage.rs          Recent repositories, tab session, theme state
+  ui/                 Graph, diff, image, and scrollbar helpers
+
 scripts/
-  bundle-macos.sh     .app バンドル作成（アイコン・Info.plist・ad-hoc署名）
-  git_worker.rs       タブごとの Git ワーカースレッド
-  storage.rs          最近のリポジトリ・タブセッション・テーマの保存
-  ui/                 グラフ描画ヘルパー
+  bundle-macos.sh     Builds the .app bundle (icon, Info.plist, ad-hoc signing)
 ```
 
-- Git 処理はタブごとの専用スレッドで実行し、UI スレッドでは `git2::Repository` を
-  触りません。結果は `async-channel` で plain data として返します。
-- 履歴は 300 件/page。差分・ファイルツリー・ファイル内容は選択時に遅延ロードします。
-- 大きな差分（20,000行）、大きなファイル（2MB / 50,000行）、大量のツリー項目には
-  上限を設け、UI に省略表示を出します。
-- 状態は `~/Library/Application Support/Rascal/state.json` に保存します。
-  最近のリポジトリ（最大20件）、開いていたタブ、アクティブタブ、テーマ、差分テーマ、
-  言語、UI / コードフォント、差分レイアウト（1ペイン / 2ペイン）、画像比較モードを保持します。
+- Each tab has an interactive Git worker and a separate worktree/status worker.
+  The UI thread never touches `git2::Repository`; results are sent as plain data
+  over `async-channel`.
+- The first tab paint uses lightweight metadata. Branches and worktree counts are
+  loaded afterward, and the full worktree snapshot is fetched only when needed.
+- History is paged at 300 commits per page. Diffs, file trees, and file contents
+  are loaded lazily when selected.
+- Large inputs are capped: 20,000 diff lines, 2 MB or 50,000 lines per text blob,
+  and 20 MiB or 8,192 px per image. The UI indicates when content is truncated.
+- State is stored at `~/Library/Application Support/Rascal/state.json`: up to 20
+  recent repositories, open tabs, active tab, app theme, diff theme, language,
+  UI/code fonts, diff layout, and image comparison mode.
 
-## テスト
+## Testing
 
 ```sh
 cargo test --workspace
@@ -215,22 +214,26 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-`rascal-core` のテストは `tempfile` 上に git2 でリポジトリを作り、履歴・refs・
-差分・rename・binary・worktree・ツリー・blob を検証します。
+`rascal-core` tests create repositories with git2 under `tempfile` and cover
+history, refs, diffs, renames, binary files, worktrees, trees, and blobs.
 
-## 制約
+## Limitations
 
-- 読み取り専用です。リポジトリを変更する操作はありません。
-- マージコミットは第1親との差分のみ表示します（combined diff なし）。
-- シンタックスハイライトは未対応です。
-- 画像はプレビューと比較に対応していますが、ズーム・パン・画像一覧サムネイルは未対応です。
-- 画像比較のスライダーは観賞用の比較で、ピクセル単位の差分しきい値は固定です。
-- 画像は1枚20MiB、8192px、差分計算は1600万ピクセルまでに制限しています。
-- Git LFSのpointerは画像として取得しません。
-- ファイル監視は行いません。外部で変更した場合は `⌘R` で更新してください。
-  ウィンドウのアクティブ化時にはメタ情報だけ再取得します。
-- UI は日本語 / English に対応しています。
+- Rascal is read-only; it never modifies a repository.
+- Merge commits show only the first-parent diff (no combined diff).
+- Syntax highlighting is not supported.
+- Image preview and comparison are supported, but zoom, pan, and thumbnail lists
+  are not.
+- The image slider is a visual comparison tool; the pixel-difference threshold
+  is fixed.
+- Images are limited to 20 MiB and 8,192 px. Difference computation is limited
+  to 16 million pixels.
+- Git LFS pointers are not fetched or rendered as images.
+- File watching is not used. Press `⌘R` after external changes; window activation
+  refreshes metadata only.
+- The UI supports Japanese and English.
 
-## ライセンス
+## License
 
-MIT（`Cargo.toml` の設定）。依存クレートのライセンスは各クレートに従います。
+MIT. See the `Cargo.toml` metadata. Dependency licenses follow their respective
+projects.

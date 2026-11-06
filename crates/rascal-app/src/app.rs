@@ -1,6 +1,9 @@
 //! Application shell: window title bar, repository tabs and the welcome view.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use chrono::TimeZone;
 
@@ -213,12 +216,15 @@ impl RascalApp {
             app.active = index;
         }
 
+        let _ = cli::refresh_installed();
+        app.process_cli_requests(window, cx);
         app.showing_dashboard = app.tabs.is_empty();
         app.persist_session(cx);
         app.update_window_title(window, cx);
         if app.showing_dashboard {
             app.focus_handle.focus(window);
         }
+        app.start_cli_request_poll(window, cx);
         app
     }
 
@@ -244,6 +250,27 @@ impl RascalApp {
                 });
             })
             .detach();
+    }
+
+    fn process_cli_requests(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for path in cli::take_open_requests() {
+            self.open_repo(path, window, cx);
+        }
+    }
+
+    fn start_cli_request_poll(&mut self, window: &Window, cx: &mut Context<Self>) {
+        cx.spawn_in(window, async move |this, cx| {
+            loop {
+                Timer::after(Duration::from_millis(300)).await;
+                if this
+                    .update_in(cx, |app, window, cx| app.process_cli_requests(window, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     fn open_repo(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {

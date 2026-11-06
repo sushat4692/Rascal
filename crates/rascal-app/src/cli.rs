@@ -100,6 +100,41 @@ pub fn command_path(home: &Path) -> PathBuf {
     home.join(".local").join("bin").join(COMMAND_NAME)
 }
 
+/// Directory where the CLI launcher queues repositories to open.
+pub fn requests_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|dir| dir.join("Rascal").join("requests"))
+}
+
+/// Read and consume queued CLI open requests.
+pub fn take_open_requests() -> Vec<PathBuf> {
+    requests_dir()
+        .as_deref()
+        .map(take_requests_from)
+        .unwrap_or_default()
+}
+
+/// Update an existing Rascal launcher to the current wrapper format.
+pub fn refresh_installed() -> Result<(), CliError> {
+    let Some(app) = app_bundle_path() else {
+        return Ok(());
+    };
+    let Some(home) = home_dir() else {
+        return Ok(());
+    };
+    let path = command_path(&home);
+    let Ok(existing) = fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    if !is_ours(&existing) {
+        return Ok(());
+    }
+    let script = wrapper_script(&app);
+    if existing == script {
+        return Ok(());
+    }
+    write_launcher(&path, &script)
+}
+
 fn install_into(home: &Path, app: &Path) -> Result<InstallResult, CliError> {
     let path = command_path(home);
     let bin_dir = path.parent().expect("command path has parent");
@@ -113,22 +148,69 @@ fn install_into(home: &Path, app: &Path) -> Result<InstallResult, CliError> {
     }
 
     let script = wrapper_script(app);
-    let temporary = bin_dir.join(format!(".rascal-cli-{}.tmp", std::process::id()));
-    let result = (|| -> Result<(), CliError> {
-        fs::write(&temporary, script.as_bytes())?;
-        set_executable(&temporary)?;
-        fs::rename(&temporary, &path)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result?;
+    write_launcher(&path, &script)?;
 
     Ok(InstallResult {
         in_path: path_contains_dir(bin_dir, std::env::var_os("PATH").as_deref()),
         command_path: path,
     })
+}
+
+fn write_launcher(path: &Path, script: &str) -> Result<(), CliError> {
+    let bin_dir = path.parent().expect("command path has parent");
+    fs::create_dir_all(bin_dir)?;
+    let temporary = bin_dir.join(format!(".rascal-cli-{}.tmp", std::process::id()));
+    let result = (|| -> Result<(), CliError> {
+        fs::write(&temporary, script.as_bytes())?;
+        set_executable(&temporary)?;
+        fs::rename(&temporary, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn take_requests_from(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut requests: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "request")
+        })
+        .collect();
+    requests.sort();
+
+    let mut paths = Vec::new();
+    for request in requests {
+        let Ok(bytes) = fs::read(&request) else {
+            continue;
+        };
+        let _ = fs::remove_file(&request);
+        for path in bytes
+            .split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+        {
+            paths.push(path_from_bytes(path));
+        }
+    }
+    paths
+}
+
+#[cfg(unix)]
+fn path_from_bytes(bytes: &[u8]) -> PathBuf {
+    use std::os::unix::ffi::OsStringExt;
+    PathBuf::from(std::ffi::OsString::from_vec(bytes.to_vec()))
+}
+
+#[cfg(not(unix))]
+fn path_from_bytes(bytes: &[u8]) -> PathBuf {
+    PathBuf::from(String::from_utf8_lossy(bytes).into_owned())
 }
 
 fn uninstall_into(home: &Path) -> Result<(), CliError> {
@@ -150,16 +232,54 @@ fn wrapper_script(app: &Path) -> String {
         r#"#!/bin/sh
 {MARKER}
 APP={app}
-if [ -d "$APP" ]; then
-  if [ "$#" -gt 0 ]; then
+REQUESTS="$HOME/Library/Application Support/Rascal/requests"
+
+open_app() {{
+  if [ -d "$APP" ]; then
+    exec /usr/bin/open -a "$APP"
+  fi
+  exec /usr/bin/open -b {BUNDLE_ID}
+}}
+
+if [ "$#" -eq 0 ]; then
+  open_app
+fi
+
+umask 077
+if ! /bin/mkdir -p "$REQUESTS"; then
+  if [ -d "$APP" ]; then
     exec /usr/bin/open -a "$APP" --args "$@"
   fi
-  exec /usr/bin/open -a "$APP"
-fi
-if [ "$#" -gt 0 ]; then
   exec /usr/bin/open -b {BUNDLE_ID} --args "$@"
 fi
-exec /usr/bin/open -b {BUNDLE_ID}
+
+STAMP="$(/bin/date +%s)-$$"
+TEMP="$REQUESTS/.pending-$STAMP"
+if ! : > "$TEMP"; then
+  exit 1
+fi
+
+for arg in "$@"; do
+  if [ -d "$arg" ]; then
+    abs="$(cd "$arg" 2>/dev/null && pwd -P)" || abs="$arg"
+  else
+    case "$arg" in
+      /*) abs="$arg" ;;
+      *) abs="$(pwd -P)/$arg" ;;
+    esac
+  fi
+  if ! printf '%s\0' "$abs" >> "$TEMP"; then
+    /bin/rm -f "$TEMP"
+    exit 1
+  fi
+done
+
+if ! /bin/mv "$TEMP" "$REQUESTS/$STAMP.request"; then
+  /bin/rm -f "$TEMP"
+  exit 1
+fi
+
+open_app
 "#
     )
 }
@@ -217,7 +337,9 @@ mod tests {
         assert!(script.contains(MARKER));
         assert!(script.contains("'/Applications/Rascal.app'"));
         assert!(script.contains(BUNDLE_ID));
-        assert!(script.contains("--args"));
+        assert!(script.contains("Rascal/requests"));
+        assert!(!script.contains("--args /tmp"));
+        assert!(script.contains("printf '%s\\0'"));
     }
 
     #[test]
@@ -268,5 +390,35 @@ mod tests {
         let path = OsString::from("/usr/bin:/bin");
         assert!(!path_contains_dir(dir, Some(&path)));
         assert!(!path_contains_dir(dir, None));
+    }
+
+    #[test]
+    fn takes_and_removes_open_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("02.request"), b"/second").unwrap();
+        fs::write(dir.path().join("01.request"), b"/first\0/with space\0").unwrap();
+        fs::write(dir.path().join(".pending-123"), b"/ignored").unwrap();
+
+        let paths = take_requests_from(dir.path());
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("/first"),
+                PathBuf::from("/with space"),
+                PathBuf::from("/second")
+            ]
+        );
+        assert!(!dir.path().join("01.request").exists());
+        assert!(!dir.path().join("02.request").exists());
+        assert!(dir.path().join(".pending-123").exists());
+        assert!(take_requests_from(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn updates_wrapper_for_new_app_location() {
+        let first = wrapper_script(Path::new("/Applications/Rascal.app"));
+        let second = wrapper_script(Path::new("/Users/me/Rascal.app"));
+        assert_ne!(first, second);
+        assert!(second.contains("/Users/me/Rascal.app"));
     }
 }

@@ -15,6 +15,7 @@ use crate::git_worker::{Command, Event, GitWorker};
 use crate::i18n::LanguageExt;
 use crate::ui::diff_view::{self, DiffDisplayRow, DiffInfo, DiffLayout};
 use crate::ui::image_view::{self, ImageView};
+use crate::ui::scrollbar;
 
 const LEFT_PANE_WIDTH: f32 = 360.0;
 const HISTORY_ROW_HEIGHT: f32 = 76.0;
@@ -32,6 +33,7 @@ pub struct FileHistoryView {
     next_req: u64,
     pending_req: u64,
 
+    commit_scroll: UniformListScrollHandle,
     diff: Option<FileDiff>,
     diff_rows: Rc<Vec<DiffDisplayRow>>,
     diff_list: ListState,
@@ -81,6 +83,7 @@ impl FileHistoryView {
             commands,
             next_req: 1,
             pending_req: 1,
+            commit_scroll: UniformListScrollHandle::new(),
             diff: None,
             diff_rows: Rc::new(Vec::new()),
             diff_list: ListState::new(0, ListAlignment::Top, px(1000.0)),
@@ -349,7 +352,8 @@ impl FileHistoryView {
                 .child(cx.tr("このファイルを変更したコミットはありません"))
                 .into_any_element()
         } else {
-            uniform_list(
+            let scroll = self.commit_scroll.clone();
+            let list = uniform_list(
                 "file-history-list",
                 commits.len(),
                 move |range, _window, cx| {
@@ -363,9 +367,16 @@ impl FileHistoryView {
                         .collect::<Vec<_>>()
                 },
             )
-            .flex_1()
-            .min_h_0()
-            .into_any_element()
+            .track_scroll(scroll.clone())
+            .size_full()
+            .pr(px(scrollbar::CONTENT_GUTTER));
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .child(list)
+                .child(scrollbar::vertical("file-history-list-scrollbar", &scroll))
+                .into_any_element()
         };
 
         let footer = if self.has_more {
@@ -583,10 +594,20 @@ impl FileHistoryView {
             None => div().into_any_element(),
         });
         div()
+            .relative()
             .flex_1()
             .min_h_0()
             .w_full()
-            .child(list.size_full())
+            .child(
+                div()
+                    .size_full()
+                    .pr(px(scrollbar::CONTENT_GUTTER))
+                    .child(list.size_full()),
+            )
+            .child(scrollbar::vertical(
+                "file-history-diff-scrollbar",
+                &self.diff_list,
+            ))
             .into_any_element()
     }
 

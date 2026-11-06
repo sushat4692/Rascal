@@ -30,6 +30,7 @@ use crate::i18n::LanguageExt;
 use crate::ui::diff_view::{self, DiffDisplayRow, DiffLayout};
 use crate::ui::graph::{gutter_width_for, lane_color};
 use crate::ui::image_view::{self, ImageView};
+use crate::ui::scrollbar;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileListMode {
@@ -234,6 +235,8 @@ pub struct RepoSession {
     history_focus: FocusHandle,
     history_scroll: UniformListScrollHandle,
     file_scroll: UniformListScrollHandle,
+    branch_scroll: ScrollHandle,
+    message_scroll: ScrollHandle,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -258,6 +261,8 @@ impl RepoSession {
         let history_focus = cx.focus_handle();
         let history_scroll = UniformListScrollHandle::new();
         let file_scroll = UniformListScrollHandle::new();
+        let branch_scroll = ScrollHandle::new();
+        let message_scroll = ScrollHandle::new();
         let viewer_list = ListState::new(0, ListAlignment::Top, px(1000.0));
 
         let activation_subscription = cx.observe_window_activation(window, |this, window, cx| {
@@ -334,6 +339,8 @@ impl RepoSession {
             history_focus: history_focus.clone(),
             history_scroll,
             file_scroll,
+            branch_scroll,
+            message_scroll,
             _subscriptions: vec![filter_subscription, activation_subscription],
         };
 
@@ -872,6 +879,7 @@ impl RepoSession {
         self.detail_loading = true;
         self.detail_error = None;
         self.message_expanded = false;
+        self.message_scroll.set_offset(Point::default());
         self.selected_file = None;
         self.clear_viewer();
         self.tree_cache.clear();
@@ -888,6 +896,7 @@ impl RepoSession {
         self.detail_loading = false;
         self.detail_error = None;
         self.message_expanded = false;
+        self.message_scroll.set_offset(Point::default());
         self.selected_file = None;
         self.clear_viewer();
         self.collapsed_change_dirs.clear();
@@ -1367,14 +1376,25 @@ impl RepoSession {
             )
             .child(
                 div()
-                    .id(ElementId::Name(
-                        format!("branches-scroll-{}", self.id).into(),
-                    ))
+                    .relative()
                     .flex_1()
                     .min_h_0()
-                    .px_2()
-                    .overflow_y_scroll()
-                    .children(branch_rows),
+                    .child(
+                        div()
+                            .id(ElementId::Name(
+                                format!("branches-scroll-{}", self.id).into(),
+                            ))
+                            .size_full()
+                            .px_2()
+                            .pr(px(scrollbar::CONTENT_GUTTER))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.branch_scroll)
+                            .children(branch_rows),
+                    )
+                    .child(scrollbar::vertical(
+                        ElementId::Name(format!("branches-scrollbar-{}", self.id).into()),
+                        &self.branch_scroll,
+                    )),
             )
             .into_any_element()
     }
@@ -1500,7 +1520,8 @@ impl RepoSession {
             let rows_for_list = rows.clone();
             let entity_for_list = entity.clone();
             let focus_for_list = focus.clone();
-            uniform_list(
+            let scroll_for_bar = scroll.clone();
+            let list = uniform_list(
                 ElementId::Name(format!("history-{}", self.id).into()),
                 rows.len(),
                 move |range, _window, cx| {
@@ -1521,9 +1542,18 @@ impl RepoSession {
                 },
             )
             .track_scroll(scroll)
-            .flex_1()
-            .min_h_0()
-            .into_any_element()
+            .size_full()
+            .pr(px(scrollbar::CONTENT_GUTTER));
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .child(list)
+                .child(scrollbar::vertical(
+                    ElementId::Name(format!("history-scrollbar-{}", self.id).into()),
+                    &scroll_for_bar,
+                ))
+                .into_any_element()
         };
 
         let entity_keys = entity.clone();
@@ -1952,7 +1982,8 @@ impl RepoSession {
             let selected_for_list = self.selected_file.clone();
             let entity_for_list = entity.clone();
             let scroll = self.file_scroll.clone();
-            uniform_list(
+            let scroll_for_bar = scroll.clone();
+            let list = uniform_list(
                 ElementId::Name(format!("file-list-{}", self.id).into()),
                 rows.len(),
                 move |range, _window, cx| {
@@ -1971,9 +2002,18 @@ impl RepoSession {
                 },
             )
             .track_scroll(scroll)
-            .flex_1()
-            .min_h_0()
-            .into_any_element()
+            .size_full()
+            .pr(px(scrollbar::CONTENT_GUTTER));
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .child(list)
+                .child(scrollbar::vertical(
+                    ElementId::Name(format!("file-list-scrollbar-{}", self.id).into()),
+                    &scroll_for_bar,
+                ))
+                .into_any_element()
         };
 
         div()
@@ -2073,10 +2113,20 @@ impl RepoSession {
                 viewer_row_element(row, cx)
             });
             div()
+                .relative()
                 .flex_1()
                 .min_h_0()
                 .w_full()
-                .child(list.size_full())
+                .child(
+                    div()
+                        .size_full()
+                        .pr(px(scrollbar::CONTENT_GUTTER))
+                        .child(list.size_full()),
+                )
+                .child(scrollbar::vertical(
+                    ElementId::Name(format!("viewer-scrollbar-{}", self.id).into()),
+                    &self.viewer_list,
+                ))
                 .into_any_element()
         };
 
@@ -2430,16 +2480,27 @@ impl RepoSession {
         if self.message_expanded && !message.is_empty() {
             bar = bar.child(
                 div()
-                    .id(ElementId::Name(
-                        format!("commit-message-{}", self.id).into(),
-                    ))
+                    .relative()
                     .max_h(px(160.0))
-                    .overflow_y_scroll()
-                    .px_4()
-                    .pb_2()
-                    .text_sm()
-                    .whitespace_normal()
-                    .child(message),
+                    .child(
+                        div()
+                            .id(ElementId::Name(
+                                format!("commit-message-{}", self.id).into(),
+                            ))
+                            .max_h(px(160.0))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.message_scroll)
+                            .px_4()
+                            .pr(px(scrollbar::CONTENT_GUTTER))
+                            .pb_2()
+                            .text_sm()
+                            .whitespace_normal()
+                            .child(message),
+                    )
+                    .child(scrollbar::vertical(
+                        ElementId::Name(format!("commit-message-scrollbar-{}", self.id).into()),
+                        &self.message_scroll,
+                    )),
             );
         }
 

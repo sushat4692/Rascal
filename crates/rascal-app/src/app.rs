@@ -23,6 +23,7 @@ use crate::session::RepoSession;
 use crate::storage::{AppState, Storage};
 use crate::ui::diff_view::DiffLayout;
 use crate::ui::image_view::ImageDiffMode;
+use crate::ui::scrollbar;
 
 actions!(
     rascal,
@@ -84,6 +85,7 @@ pub struct RascalApp {
     mono_font_select: Option<Entity<FontSelect>>,
     font_select_subscriptions: Vec<Subscription>,
     settings_scroll: ScrollHandle,
+    dashboard_scroll: ScrollHandle,
     focus_handle: FocusHandle,
     _diff_layout_subscription: Option<Subscription>,
     _image_diff_mode_subscription: Option<Subscription>,
@@ -169,6 +171,7 @@ impl RascalApp {
             mono_font_select: None,
             font_select_subscriptions: Vec::new(),
             settings_scroll: ScrollHandle::new(),
+            dashboard_scroll: ScrollHandle::new(),
             focus_handle,
             _diff_layout_subscription: None,
             _image_diff_mode_subscription: None,
@@ -986,83 +989,92 @@ impl RascalApp {
             );
 
         div()
-            .id("settings-scroll")
+            .relative()
             .size_full()
-            .overflow_y_scroll()
-            .track_scroll(&self.settings_scroll)
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap_6()
-            .px_8()
-            .pt(px(48.0))
-            .pb(px(48.0))
-            .bg(theme.background)
-            .child(header)
-            .child(settings_section(
-                cx.tr("言語"),
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .children(render_language_choices(entity.clone()))
-                    .into_any_element(),
-                theme,
-            ))
-            .child(settings_section(
-                cx.tr("コマンドライン"),
-                self.render_cli_settings(entity.clone(), theme, cx),
-                theme,
-            ))
-            .child(settings_section(
-                cx.tr("アプリテーマ"),
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .children(render_app_theme_choices(entity.clone()))
-                    .into_any_element(),
-                theme,
-            ))
-            .child(settings_section(
-                cx.tr("差分テーマ"),
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_3()
-                    .children(diff_cards)
-                    .into_any_element(),
-                theme,
-            ))
-            .child(settings_section(
-                cx.tr("フォント"),
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .child(font_select_row(
-                        cx.tr("UIフォント"),
-                        self.ui_font_select.as_ref(),
-                        theme,
-                        cx.tr("フォントを検索"),
-                    ))
-                    .child(font_select_row(
-                        cx.tr("コード・差分フォント"),
-                        self.mono_font_select.as_ref(),
-                        theme,
-                        cx.tr("フォントを検索"),
-                    ))
-                    .child(ui_font_preview)
-                    .into_any_element(),
-                theme,
-            ))
             .child(
                 div()
-                    .w(px(820.0))
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(format!("Rascal {} · GPUI", env!("CARGO_PKG_VERSION"))),
+                    .id("settings-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.settings_scroll)
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap_6()
+                    .px_8()
+                    .pt(px(48.0))
+                    .pb(px(48.0))
+                    .bg(theme.background)
+                    .child(header)
+                    .child(settings_section(
+                        cx.tr("言語"),
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .children(render_language_choices(entity.clone()))
+                            .into_any_element(),
+                        theme,
+                    ))
+                    .child(settings_section(
+                        cx.tr("コマンドライン"),
+                        self.render_cli_settings(entity.clone(), theme, cx),
+                        theme,
+                    ))
+                    .child(settings_section(
+                        cx.tr("アプリテーマ"),
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .children(render_app_theme_choices(entity.clone()))
+                            .into_any_element(),
+                        theme,
+                    ))
+                    .child(settings_section(
+                        cx.tr("差分テーマ"),
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_3()
+                            .children(diff_cards)
+                            .into_any_element(),
+                        theme,
+                    ))
+                    .child(settings_section(
+                        cx.tr("フォント"),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .child(font_select_row(
+                                cx.tr("UIフォント"),
+                                self.ui_font_select.as_ref(),
+                                theme,
+                                cx.tr("フォントを検索"),
+                            ))
+                            .child(font_select_row(
+                                cx.tr("コード・差分フォント"),
+                                self.mono_font_select.as_ref(),
+                                theme,
+                                cx.tr("フォントを検索"),
+                            ))
+                            .child(ui_font_preview)
+                            .into_any_element(),
+                        theme,
+                    ))
+                    .child(
+                        div()
+                            .w(px(820.0))
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(format!("Rascal {} · GPUI", env!("CARGO_PKG_VERSION"))),
+                    ),
             )
+            .child(scrollbar::vertical(
+                "settings-scrollbar",
+                &self.settings_scroll,
+            ))
             .into_any_element()
     }
 
@@ -1362,10 +1374,15 @@ impl RascalApp {
         };
 
         div()
-            .id("dashboard-scroll")
+            .relative()
             .size_full()
-            .overflow_y_scroll()
-            .flex()
+            .child(
+                div()
+                    .id("dashboard-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.dashboard_scroll)
+                    .flex()
             .flex_col()
             .items_center()
             .gap_6()
@@ -1463,6 +1480,11 @@ impl RascalApp {
                     })
                     .children(recent),
             )
+            )
+            .child(scrollbar::vertical(
+                "dashboard-scrollbar",
+                &self.dashboard_scroll,
+            ))
             .into_any_element()
     }
 }

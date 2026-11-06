@@ -23,6 +23,7 @@ use crate::cli;
 use crate::diff_theme::DiffTheme;
 use crate::i18n::{Language, LanguageExt};
 use crate::session::RepoSession;
+use crate::settings::SettingsView;
 use crate::storage::{AppState, Storage};
 use crate::ui::diff_view::DiffLayout;
 use crate::ui::image_view::ImageDiffMode;
@@ -73,7 +74,7 @@ impl SelectItem for FontItem {
     }
 }
 
-const CONTEXT: &str = "Rascal";
+pub(crate) const CONTEXT: &str = "Rascal";
 
 pub struct RascalApp {
     tabs: Vec<Entity<RepoSession>>,
@@ -82,8 +83,8 @@ pub struct RascalApp {
     state: AppState,
     next_tab_id: u64,
     showing_dashboard: bool,
-    showing_settings: bool,
-    settings_return_dashboard: bool,
+    settings_window: Option<AnyWindowHandle>,
+    settings_opening: bool,
     ui_font_select: Option<Entity<FontSelect>>,
     mono_font_select: Option<Entity<FontSelect>>,
     font_select_subscriptions: Vec<Subscription>,
@@ -168,8 +169,8 @@ impl RascalApp {
             state,
             next_tab_id: 1,
             showing_dashboard: true,
-            showing_settings: false,
-            settings_return_dashboard: true,
+            settings_window: None,
+            settings_opening: false,
             ui_font_select: None,
             mono_font_select: None,
             font_select_subscriptions: Vec::new(),
@@ -292,7 +293,6 @@ impl RascalApp {
         {
             self.active = index;
             self.showing_dashboard = false;
-            self.showing_settings = false;
             if record_recent {
                 let name = self.repo_name(&canonical);
                 self.storage.remember(&mut self.state, &canonical, &name);
@@ -324,7 +324,6 @@ impl RascalApp {
         self.tabs.push(session);
         self.active = self.tabs.len() - 1;
         self.showing_dashboard = false;
-        self.showing_settings = false;
 
         if record_recent {
             let name = self.repo_name(&canonical);
@@ -358,44 +357,71 @@ impl RascalApp {
 
     fn show_dashboard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.showing_dashboard = true;
-        self.showing_settings = false;
         self.focus_handle.focus(window);
         self.update_window_title(window, cx);
         cx.notify();
     }
 
     fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.showing_settings {
+        if self.settings_opening {
             return;
         }
-        self.settings_return_dashboard = self.showing_dashboard || self.tabs.is_empty();
+        if let Some(handle) = self.settings_window {
+            if handle
+                .update(cx, |_, window, _| window.activate_window())
+                .is_ok()
+            {
+                return;
+            }
+            self.settings_window = None;
+        }
+
+        self.settings_opening = true;
+        let root = cx.entity();
+        let parent = window.bounds();
+        let title = format!("{} — Rascal", cx.tr("設定"));
+        cx.spawn_in(window, async move |this, cx| {
+            Timer::after(Duration::from_millis(0)).await;
+            let options = WindowOptions {
+                titlebar: Some(TitlebarOptions {
+                    title: Some(title.into()),
+                    appears_transparent: false,
+                    traffic_light_position: None,
+                }),
+                window_bounds: Some(WindowBounds::Windowed(Bounds {
+                    origin: point(parent.origin.x + px(60.0), parent.origin.y + px(60.0)),
+                    size: size(px(900.0), px(760.0)),
+                })),
+                window_min_size: Some(size(px(760.0), px(520.0))),
+                focus: true,
+                ..Default::default()
+            };
+            let result = cx.update(|_, cx| {
+                cx.open_window(options, move |window, cx| {
+                    cx.new(|cx| SettingsView::new(root.clone(), window, cx))
+                })
+            });
+            if let Ok(Ok(handle)) = result {
+                let handle: AnyWindowHandle = handle.into();
+                let _ = this.update(cx, |app, cx| {
+                    app.settings_opening = false;
+                    app.settings_window = Some(handle);
+                    cx.notify();
+                });
+                let _ = handle.update(cx, |_, window, _| window.activate_window());
+            } else {
+                let _ = this.update(cx, |app, cx| {
+                    app.settings_opening = false;
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn prepare_settings_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_scroll.set_offset(Point::default());
         self.prepare_font_selects(window, cx);
-        self.showing_settings = true;
-        self.showing_dashboard = false;
-        self.focus_handle.focus(window);
-        self.update_window_title(window, cx);
-        cx.notify();
-    }
-
-    fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.showing_settings = false;
-        self.showing_dashboard = self.settings_return_dashboard || self.tabs.is_empty();
-        if self.showing_dashboard {
-            self.focus_handle.focus(window);
-        } else if let Some(tab) = self.tabs.get(self.active).cloned() {
-            tab.update(cx, |session, cx| session.focus_history(window, cx));
-        }
-        self.update_window_title(window, cx);
-        cx.notify();
-    }
-
-    fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.showing_settings {
-            self.close_settings(window, cx);
-        } else {
-            self.open_settings(window, cx);
-        }
     }
 
     fn set_language(&mut self, language: Language, window: &mut Window, cx: &mut Context<Self>) {
@@ -406,14 +432,11 @@ impl RascalApp {
         self.state.language = Some(language.key().to_string());
         let _ = self.storage.save(&self.state);
         install_menus(cx);
-        if self.showing_settings {
-            self.prepare_font_selects(window, cx);
-        }
+        self.prepare_font_selects(window, cx);
         for tab in &self.tabs {
             tab.update(cx, |session, cx| session.language_changed(window, cx));
         }
         cx.refresh_windows();
-        self.update_window_title(window, cx);
         cx.notify();
     }
 
@@ -506,7 +529,7 @@ impl RascalApp {
         cx.notify();
     }
 
-    fn prepare_font_selects(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn prepare_font_selects(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.font_select_subscriptions.clear();
         let fonts = installed_font_names(cx);
 
@@ -621,9 +644,7 @@ impl RascalApp {
     }
 
     fn update_window_title(&self, window: &mut Window, cx: &App) {
-        let title = if self.showing_settings {
-            format!("{} — Rascal", cx.tr("設定"))
-        } else if self.tabs.is_empty() {
+        let title = if self.tabs.is_empty() {
             "Rascal".to_string()
         } else if self.showing_dashboard {
             cx.tr("ダッシュボード — Rascal").to_string()
@@ -664,6 +685,7 @@ impl RascalApp {
         for tab in &self.tabs {
             tab.update(cx, |_, cx| cx.notify());
         }
+        cx.refresh_windows();
         cx.notify();
     }
 
@@ -731,7 +753,6 @@ impl RascalApp {
                         tab_root.update(cx, |app, cx| {
                             app.active = index;
                             app.showing_dashboard = false;
-                            app.showing_settings = false;
                             if let Some(session) = app.tabs.get(index).cloned() {
                                 session.update(cx, |session, cx| session.focus_history(window, cx));
                             }
@@ -798,8 +819,7 @@ impl RascalApp {
                 }
             }));
 
-        let dashboard_active =
-            self.showing_dashboard && !self.showing_settings || self.tabs.is_empty();
+        let dashboard_active = self.showing_dashboard || self.tabs.is_empty();
         let dashboard_button = Button::new("dashboard")
             .small()
             .ghost()
@@ -811,10 +831,9 @@ impl RascalApp {
         let settings_button = Button::new("settings")
             .small()
             .ghost()
-            .selected(self.showing_settings)
             .icon(Icon::new(IconName::Settings).size(px(14.0)))
             .tooltip_with_action(cx.tr("設定"), &OpenSettings, Some(CONTEXT))
-            .on_click(cx.listener(|this, _, window, cx| this.toggle_settings(window, cx)));
+            .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx)));
 
         let theme_button = Button::new("theme")
             .small()
@@ -888,9 +907,8 @@ impl RascalApp {
             .into_any_element()
     }
 
-    fn render_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_settings(&self, entity: Entity<RascalApp>, cx: &App) -> AnyElement {
         let theme = cx.theme();
-        let entity = cx.entity();
         let language = cx.language();
 
         let render_language_choices = |entity: Entity<RascalApp>| {
@@ -1012,7 +1030,7 @@ impl RascalApp {
                 Button::new("settings-close")
                     .ghost()
                     .label(cx.tr("閉じる"))
-                    .on_click(cx.listener(|this, _, window, cx| this.close_settings(window, cx))),
+                    .on_click(|_, window, _| window.remove_window()),
             );
 
         div()
@@ -1806,13 +1824,11 @@ impl Focusable for RascalApp {
 
 impl Render for RascalApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if (self.showing_dashboard || self.showing_settings) && window.focused(cx).is_none() {
+        if self.showing_dashboard && window.focused(cx).is_none() {
             self.focus_handle.focus(window);
         }
         let title_bar = self.render_title_bar(cx);
-        let content = if self.showing_settings {
-            self.render_settings(cx)
-        } else if self.showing_dashboard || self.tabs.is_empty() {
+        let content = if self.showing_dashboard || self.tabs.is_empty() {
             self.render_dashboard(cx)
         } else {
             self.tabs[self.active].clone().into_any_element()

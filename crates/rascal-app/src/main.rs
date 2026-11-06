@@ -12,6 +12,7 @@ mod file_history;
 mod git_worker;
 mod i18n;
 mod session;
+mod settings;
 mod storage;
 mod ui;
 

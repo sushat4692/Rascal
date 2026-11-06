@@ -32,13 +32,25 @@ impl GitRepo {
     }
 
     pub fn info(&self) -> Result<RepoInfo> {
+        self.info_inner(true)
+    }
+
+    /// Load repository metadata without scanning the working tree.
+    ///
+    /// Use this for the first paint of a tab. `info` scans every tracked file
+    /// for status, which can be slow on large repositories.
+    pub fn info_fast(&self) -> Result<RepoInfo> {
+        self.info_inner(false)
+    }
+
+    fn info_inner(&self, include_counts: bool) -> Result<RepoInfo> {
         let head = self.head_state()?;
         let workdir = self.repo.workdir().map(Path::to_path_buf);
         let name = repo_name(&self.repo, &workdir);
-        let counts = if self.repo.is_bare() {
-            WorktreeCounts::default()
-        } else {
+        let counts = if include_counts && !self.repo.is_bare() {
             self.worktree_counts()?
+        } else {
+            WorktreeCounts::default()
         };
 
         Ok(RepoInfo {
@@ -137,6 +149,30 @@ impl GitRepo {
     pub fn worktree_counts(&self) -> Result<WorktreeCounts> {
         let mut counts = WorktreeCounts::default();
         for entry in self.statuses()?.iter() {
+            let (staged, unstaged, untracked) = classify_status(entry.status());
+            counts.staged += usize::from(staged);
+            counts.unstaged += usize::from(unstaged);
+            counts.untracked += usize::from(untracked);
+        }
+        Ok(counts)
+    }
+
+    /// Count working-tree changes without index-to-workdir rename detection.
+    ///
+    /// Full rename detection is expensive on large repositories. This variant
+    /// is used for the first paint, while the complete snapshot is loaded on
+    /// demand.
+    pub fn worktree_counts_fast(&self) -> Result<WorktreeCounts> {
+        let mut options = StatusOptions::new();
+        options
+            .include_untracked(true)
+            .recurse_untracked_dirs(true)
+            .renames_head_to_index(true)
+            .renames_index_to_workdir(false)
+            .include_ignored(false);
+        let statuses = self.repo.statuses(Some(&mut options))?;
+        let mut counts = WorktreeCounts::default();
+        for entry in statuses.iter() {
             let (staged, unstaged, untracked) = classify_status(entry.status());
             counts.staged += usize::from(staged);
             counts.unstaged += usize::from(unstaged);

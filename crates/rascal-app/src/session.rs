@@ -223,8 +223,12 @@ pub struct RepoSession {
     tree_error: Option<String>,
 
     commands: async_channel::Sender<Command>,
+    worktree_commands: async_channel::Sender<Command>,
     next_req: u64,
     meta_req: u64,
+    branches_req: u64,
+    counts_req: u64,
+    counts_loading: bool,
     history_req: u64,
     commit_req: u64,
     diff_req: u64,
@@ -268,6 +272,7 @@ impl RepoSession {
         let activation_subscription = cx.observe_window_activation(window, |this, window, cx| {
             if window.is_window_active() {
                 this.request_meta(cx);
+                this.request_worktree_counts(cx);
             }
         });
 
@@ -284,7 +289,7 @@ impl RepoSession {
         })
         .detach();
 
-        let mut session = Self {
+        let session = Self {
             id,
             path,
             info: None,
@@ -328,8 +333,12 @@ impl RepoSession {
             expanded_dirs: HashSet::new(),
             tree_error: None,
             commands: worker.commands,
+            worktree_commands: worker.worktree_commands,
             next_req: 0,
             meta_req: 0,
+            branches_req: 0,
+            counts_req: 0,
+            counts_loading: false,
             history_req: 0,
             commit_req: 0,
             diff_req: 0,
@@ -345,7 +354,6 @@ impl RepoSession {
         };
 
         history_focus.focus(window);
-        session.request_meta(cx);
         session
     }
 
@@ -363,7 +371,10 @@ impl RepoSession {
 
     pub fn refresh(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.request_meta(cx);
-        self.request_worktree(cx);
+        self.request_worktree_counts(cx);
+        if self.selected == Selection::WorkingTree {
+            self.request_worktree(cx);
+        }
         self.request_history(0, cx);
         if let Selection::Commit(oid) = self.selected {
             self.select_commit(oid, cx);
@@ -412,6 +423,26 @@ impl RepoSession {
         cx.notify();
     }
 
+    fn request_branches(&mut self, cx: &mut Context<Self>) {
+        let req = self.next_req();
+        self.branches_req = req;
+        let _ = self.commands.send_blocking(Command::LoadBranches { req });
+        cx.notify();
+    }
+
+    fn request_worktree_counts(&mut self, cx: &mut Context<Self>) {
+        if self.info.as_ref().is_some_and(|info| info.is_bare) {
+            return;
+        }
+        let req = self.next_req();
+        self.counts_req = req;
+        self.counts_loading = true;
+        let _ = self
+            .worktree_commands
+            .send_blocking(Command::LoadWorktreeCounts { req });
+        cx.notify();
+    }
+
     fn request_worktree(&mut self, cx: &mut Context<Self>) {
         if self.info.as_ref().is_some_and(|info| info.is_bare) {
             return;
@@ -420,7 +451,9 @@ impl RepoSession {
         self.worktree_req = req;
         self.worktree_loading = true;
         self.worktree_error = None;
-        let _ = self.commands.send_blocking(Command::LoadWorktree { req });
+        let _ = self
+            .worktree_commands
+            .send_blocking(Command::LoadWorktree { req });
         cx.notify();
     }
 
@@ -535,12 +568,14 @@ impl RepoSession {
         self.image_error = None;
         self.image_req = 0;
         self.set_viewer_rows(Vec::new());
-        let _ = self.commands.send_blocking(Command::LoadWorktreeDiff {
-            req,
-            path,
-            old_path,
-            layer,
-        });
+        let _ = self
+            .worktree_commands
+            .send_blocking(Command::LoadWorktreeDiff {
+                req,
+                path,
+                old_path,
+                layer,
+            });
         cx.notify();
     }
 
@@ -589,12 +624,14 @@ impl RepoSession {
         self.blob = None;
         self.diff_req = 0;
         self.set_viewer_rows(Vec::new());
-        let _ = self.commands.send_blocking(Command::LoadWorktreeImageDiff {
-            req,
-            path,
-            old_path,
-            layer,
-        });
+        let _ = self
+            .worktree_commands
+            .send_blocking(Command::LoadWorktreeImageDiff {
+                req,
+                path,
+                old_path,
+                layer,
+            });
         cx.notify();
     }
 
@@ -656,13 +693,20 @@ impl RepoSession {
 
     fn handle_event(&mut self, event: Event, cx: &mut Context<Self>) {
         match event {
-            Event::Ready { info, branches } => {
+            Event::Ready { info } => {
                 self.opening = false;
                 self.open_error = None;
                 self.info = Some(info);
-                self.branches = branches;
                 self.request_history(0, cx);
-                self.request_worktree(cx);
+                self.request_branches(cx);
+                self.request_worktree_counts(cx);
+            }
+            Event::Branches { req, branches } => {
+                if req != self.branches_req {
+                    return;
+                }
+                self.branches = branches;
+                cx.notify();
             }
             Event::Failed { message } => {
                 self.opening = false;
@@ -671,11 +715,14 @@ impl RepoSession {
             }
             Event::Meta {
                 req,
-                info,
+                mut info,
                 branches,
             } => {
                 if req != self.meta_req {
                     return;
+                }
+                if let Some(current) = &self.info {
+                    info.counts = current.counts.clone();
                 }
                 self.info = Some(info);
                 self.branches = branches;
@@ -766,13 +813,27 @@ impl RepoSession {
                 self.set_diff(diff, cx);
                 cx.notify();
             }
+            Event::WorktreeCounts { req, counts } => {
+                if req != self.counts_req {
+                    return;
+                }
+                self.counts_loading = false;
+                if let Some(info) = &mut self.info {
+                    info.counts = counts;
+                }
+                cx.notify();
+            }
             Event::Worktree { req, snapshot } => {
                 if req != self.worktree_req {
                     return;
                 }
                 self.worktree_loading = false;
+                self.counts_loading = false;
                 self.worktree_error = None;
                 let is_clean = snapshot.counts.is_clean();
+                if let Some(info) = &mut self.info {
+                    info.counts = snapshot.counts.clone();
+                }
                 self.worktree = Some(snapshot);
                 if self.selected == Selection::WorkingTree {
                     self.auto_select_first_file(cx);
@@ -812,6 +873,14 @@ impl RepoSession {
                 context,
                 message,
             } => {
+                if req == self.counts_req {
+                    self.counts_loading = false;
+                    cx.notify();
+                    return;
+                }
+                if req == self.branches_req {
+                    return;
+                }
                 if req == self.image_req {
                     self.image_loading = false;
                     self.image_error = Some(message);
@@ -1325,7 +1394,9 @@ impl RepoSession {
                 .px_3()
                 .text_xs()
                 .text_color(theme.muted_foreground)
-                .child(if counts.is_clean() {
+                .child(if self.counts_loading {
+                    "…".to_string()
+                } else if counts.is_clean() {
                     cx.tr("作業ツリーはクリーン").to_string()
                 } else {
                     worktree_counts_text(cx, &counts)

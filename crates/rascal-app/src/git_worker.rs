@@ -17,6 +17,9 @@ pub enum Command {
     LoadMeta {
         req: u64,
     },
+    LoadBranches {
+        req: u64,
+    },
     LoadHistory {
         req: u64,
         rev: String,
@@ -66,6 +69,9 @@ pub enum Command {
     LoadWorktree {
         req: u64,
     },
+    LoadWorktreeCounts {
+        req: u64,
+    },
     LoadWorktreeDiff {
         req: u64,
         path: String,
@@ -87,6 +93,9 @@ pub enum Command {
 pub enum Event {
     Ready {
         info: RepoInfo,
+    },
+    Branches {
+        req: u64,
         branches: Vec<BranchInfo>,
     },
     Failed {
@@ -125,6 +134,10 @@ pub enum Event {
         req: u64,
         diff: FileDiff,
     },
+    WorktreeCounts {
+        req: u64,
+        counts: rascal_core::WorktreeCounts,
+    },
     Worktree {
         req: u64,
         snapshot: WorktreeSnapshot,
@@ -151,28 +164,37 @@ pub enum Event {
 
 pub struct GitWorker {
     pub commands: Sender<Command>,
+    pub worktree_commands: Sender<Command>,
 }
 
 impl GitWorker {
     pub fn spawn(path: PathBuf) -> (Self, Receiver<Event>) {
         let (command_tx, command_rx) = async_channel::unbounded();
+        let (worktree_tx, worktree_rx) = async_channel::unbounded();
         let (event_tx, event_rx) = async_channel::unbounded();
+        let worktree_event_tx = event_tx.clone();
+        let worktree_path = path.clone();
 
         std::thread::Builder::new()
             .name("rascal-git".to_string())
-            .spawn(move || run(path, command_rx, event_tx))
+            .spawn(move || run_interactive(path, command_rx, event_tx))
             .expect("failed to spawn Git worker");
+        std::thread::Builder::new()
+            .name("rascal-git-worktree".to_string())
+            .spawn(move || run_worktree(worktree_path, worktree_rx, worktree_event_tx))
+            .expect("failed to spawn worktree worker");
 
         (
             Self {
                 commands: command_tx,
+                worktree_commands: worktree_tx,
             },
             event_rx,
         )
     }
 }
 
-fn run(path: PathBuf, command_rx: Receiver<Command>, event_tx: Sender<Event>) {
+fn run_interactive(path: PathBuf, command_rx: Receiver<Command>, event_tx: Sender<Event>) {
     let repo = match rascal_core::GitRepo::open(&path) {
         Ok(repo) => repo,
         Err(err) => {
@@ -183,7 +205,7 @@ fn run(path: PathBuf, command_rx: Receiver<Command>, event_tx: Sender<Event>) {
         }
     };
 
-    let info = match repo.info() {
+    let info = match repo.info_fast() {
         Ok(info) => info,
         Err(err) => {
             let _ = event_tx.send_blocking(Event::Failed {
@@ -192,22 +214,51 @@ fn run(path: PathBuf, command_rx: Receiver<Command>, event_tx: Sender<Event>) {
             return;
         }
     };
-    let branches = repo.branches().unwrap_or_default();
-    if event_tx
-        .send_blocking(Event::Ready { info, branches })
-        .is_err()
-    {
+    if event_tx.send_blocking(Event::Ready { info }).is_err() {
         return;
     }
 
     while let Ok(command) = command_rx.recv_blocking() {
-        handle(&repo, command, &event_tx);
+        handle_interactive(&repo, command, &event_tx);
     }
 }
 
-fn handle(repo: &rascal_core::GitRepo, command: Command, event_tx: &Sender<Event>) {
+fn run_worktree(path: PathBuf, command_rx: Receiver<Command>, event_tx: Sender<Event>) {
+    let mut repo = None;
+    while let Ok(command) = command_rx.recv_blocking() {
+        if repo.is_none() {
+            match rascal_core::GitRepo::open(&path) {
+                Ok(opened) => repo = Some(opened),
+                Err(err) => {
+                    send_error(
+                        &event_tx,
+                        command_req(&command),
+                        "作業ツリー",
+                        err.to_string(),
+                    );
+                    continue;
+                }
+            }
+        }
+        if let Some(repo) = repo.as_ref() {
+            handle_worktree(repo, command, &event_tx);
+        }
+    }
+}
+
+fn command_req(command: &Command) -> u64 {
     match command {
-        Command::LoadMeta { req } => match (repo.info(), repo.branches()) {
+        Command::LoadWorktree { req }
+        | Command::LoadWorktreeCounts { req }
+        | Command::LoadWorktreeDiff { req, .. }
+        | Command::LoadWorktreeImageDiff { req, .. } => *req,
+        _ => 0,
+    }
+}
+
+fn handle_interactive(repo: &rascal_core::GitRepo, command: Command, event_tx: &Sender<Event>) {
+    match command {
+        Command::LoadMeta { req } => match (repo.info_fast(), repo.branches()) {
             (Ok(info), Ok(branches)) => send(
                 event_tx,
                 Event::Meta {
@@ -217,6 +268,10 @@ fn handle(repo: &rascal_core::GitRepo, command: Command, event_tx: &Sender<Event
                 },
             ),
             (Err(err), _) | (_, Err(err)) => send_error(event_tx, req, "メタ情報", err.to_string()),
+        },
+        Command::LoadBranches { req } => match repo.branches() {
+            Ok(branches) => send(event_tx, Event::Branches { req, branches }),
+            Err(err) => send_error(event_tx, req, "ブランチ", err.to_string()),
         },
         Command::LoadHistory {
             req,
@@ -283,6 +338,10 @@ fn handle(repo: &rascal_core::GitRepo, command: Command, event_tx: &Sender<Event
             Ok(snapshot) => send(event_tx, Event::Worktree { req, snapshot }),
             Err(err) => send_error(event_tx, req, "作業ツリー", err.to_string()),
         },
+        Command::LoadWorktreeCounts { req } => match repo.worktree_counts_fast() {
+            Ok(counts) => send(event_tx, Event::WorktreeCounts { req, counts }),
+            Err(err) => send_error(event_tx, req, "作業ツリー", err.to_string()),
+        },
         Command::LoadWorktreeDiff {
             req,
             path,
@@ -300,6 +359,38 @@ fn handle(repo: &rascal_core::GitRepo, command: Command, event_tx: &Sender<Event
             Ok(blob) => send(event_tx, Event::Blob { req, blob }),
             Err(err) => send_error(event_tx, req, "ファイル内容", err.to_string()),
         },
+    }
+}
+
+fn handle_worktree(repo: &rascal_core::GitRepo, command: Command, event_tx: &Sender<Event>) {
+    match command {
+        Command::LoadWorktreeCounts { req } => match repo.worktree_counts_fast() {
+            Ok(counts) => send(event_tx, Event::WorktreeCounts { req, counts }),
+            Err(err) => send_error(event_tx, req, "作業ツリー", err.to_string()),
+        },
+        Command::LoadWorktree { req } => match repo.worktree() {
+            Ok(snapshot) => send(event_tx, Event::Worktree { req, snapshot }),
+            Err(err) => send_error(event_tx, req, "作業ツリー", err.to_string()),
+        },
+        Command::LoadWorktreeDiff {
+            req,
+            path,
+            old_path,
+            layer,
+        } => match repo.worktree_diff(&path, old_path.as_deref(), layer) {
+            Ok(diff) => send(event_tx, Event::WorktreeDiff { req, diff }),
+            Err(err) => send_error(event_tx, req, "差分", err.to_string()),
+        },
+        Command::LoadWorktreeImageDiff {
+            req,
+            path,
+            old_path,
+            layer,
+        } => match repo.worktree_image_diff(&path, old_path.as_deref(), layer) {
+            Ok(diff) => send(event_tx, Event::ImageDiff { req, diff }),
+            Err(err) => send_error(event_tx, req, "差分", err.to_string()),
+        },
+        _ => {}
     }
 }
 

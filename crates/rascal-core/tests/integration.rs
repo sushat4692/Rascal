@@ -439,3 +439,38 @@ fn reads_image_files_and_image_diffs() {
     assert!(diff.old.is_none());
     assert_eq!(diff.new.as_ref().unwrap().bytes, b"worktree-image");
 }
+
+#[test]
+fn fast_info_skips_worktree_status_scan() {
+    let mut fixture = TestRepo::new();
+    fixture.write("tracked.txt", "clean\n");
+    fixture.commit("initial");
+    fixture.write("tracked.txt", "dirty\n");
+    fixture.write("untracked.txt", "new\n");
+
+    let repo = fixture.open();
+    let fast = repo.info_fast().unwrap();
+    assert!(fast.counts.is_clean());
+
+    let full = repo.info().unwrap();
+    assert!(!full.counts.is_clean());
+    assert_eq!(full.counts.unstaged, 1);
+    assert_eq!(full.counts.untracked, 1);
+}
+
+#[test]
+fn fast_worktree_counts_match_full_counts_without_renames() {
+    let mut fixture = TestRepo::new();
+    fixture.write("tracked.txt", "clean\n");
+    fixture.write("second.txt", "clean\n");
+    fixture.commit("initial");
+    fixture.write("tracked.txt", "dirty\n");
+    fixture.write("untracked.txt", "new\n");
+
+    let repo = fixture.open();
+    let fast = repo.worktree_counts_fast().unwrap();
+    let full = repo.worktree_counts().unwrap();
+    assert_eq!(fast.staged, full.staged);
+    assert_eq!(fast.unstaged, full.unstaged);
+    assert_eq!(fast.untracked, full.untracked);
+}
